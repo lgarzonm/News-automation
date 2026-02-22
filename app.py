@@ -150,14 +150,31 @@ CATEGORY_ICONS: dict[str, str] = {
     "Entertainment": "🎬",
 }
 
+# Clean search queries to send to GNews API
+# (avoid special chars like & + that cause 400 errors)
+CATEGORY_QUERIES: dict[str, str] = {
+    "Technology":            "technology",
+    "Finance & Markets":     "finance markets economy",
+    "Politics":              "politics government election",
+    "Science":               "science research discovery",
+    "Health & Medicine":     "health medicine medical",
+    "Business":              "business corporate industry",
+    "AI & Machine Learning": "artificial intelligence machine learning",
+    "Environment":           "environment climate nature",
+    "Sports":                "sports football basketball",
+    "Entertainment":         "entertainment movies music",
+}
+
 # ─────────────────────────────────────────────
 #  GNews API helper
 # ─────────────────────────────────────────────
 
 GNEWS_BASE = "https://gnews.io/api/v4/search"
 
-def fetch_news(query: str, api_key: str, max_results: int = 10) -> list[dict]:
+def fetch_news(category: str, api_key: str, max_results: int = 10) -> list[dict]:
     """Call GNews API and return list of article dicts."""
+    # Use the clean query string, not the display name (avoids 400 from & + chars)
+    query = CATEGORY_QUERIES.get(category, category.replace("&", "").replace("+", " ").strip())
     from_dt = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     params = {
         "q": query,
@@ -171,9 +188,18 @@ def fetch_news(query: str, api_key: str, max_results: int = 10) -> list[dict]:
         resp = requests.get(GNEWS_BASE, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
+        # GNews wraps errors in JSON even on 200 sometimes
+        if "errors" in data:
+            st.error(f"GNews error for '{category}': {data['errors']}")
+            return []
         return data.get("articles", [])
-    except requests.exceptions.HTTPError as e:
-        st.error(f"API Error ({resp.status_code}): {e}")
+    except requests.exceptions.HTTPError:
+        try:
+            err_body = resp.json()
+            msg = err_body.get("errors", resp.text)
+        except Exception:
+            msg = resp.text
+        st.error(f"API Error {resp.status_code} for **{category}**: {msg}")
     except requests.exceptions.ConnectionError:
         st.error("Connection error – check your internet connection.")
     except requests.exceptions.Timeout:
@@ -306,7 +332,7 @@ if search_btn or st.session_state.get("last_results"):
         progress = st.progress(0, text="Fetching articles…")
         for i, cat in enumerate(selected_cats):
             progress.progress((i + 1) / len(selected_cats), text=f"Searching: {cat}…")
-            articles = fetch_news(cat, api_key, max_results=max_per_cat)
+            articles = fetch_news(cat, api_key, max_results=max_per_cat)  # passes category name, resolves query internally
             if trusted_only:
                 articles = [a for a in articles if source_is_trusted(a, cat)]
             raw_articles[cat] = articles
