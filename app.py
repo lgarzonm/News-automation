@@ -674,7 +674,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🔍 Options")
-    max_per_cat  = st.slider("Articles per category", 3, 10, 5)
+    max_per_cat  = st.slider("Articles per category", 1, 10, 5)
     trusted_only = st.checkbox("Trusted sources only", value=True)
 
     st.markdown("---")
