@@ -143,6 +143,35 @@ st.markdown("""
 
     /* ── Summary text ── */
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
+
+    /* ── Multiselect tags / pills → navy blue ── */
+    /* selected tag background */
+    [data-baseweb="tag"] {
+        background-color: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+    }
+    /* tag label text */
+    [data-baseweb="tag"] span[data-testid="stMultiSelectTag"] {
+        color: #ffffff !important;
+    }
+    /* ✕ close icon inside tag */
+    [data-baseweb="tag"] span[role="presentation"] svg {
+        fill: #ffffff !important;
+    }
+    /* tag container focus ring */
+    [data-baseweb="select"] [data-baseweb="tag"]:focus-within {
+        outline-color: #2e6db4 !important;
+    }
+    /* multiselect dropdown: selected-option checkmark / highlight */
+    [data-baseweb="menu"] [aria-selected="true"] {
+        background-color: #dbeafe !important;
+        color: #1a3a6e !important;
+    }
+    /* multiselect input focus border */
+    [data-baseweb="select"] > div:focus-within {
+        border-color: #2e6db4 !important;
+        box-shadow: 0 0 0 2px rgba(46,109,180,.25) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,16 +179,17 @@ st.markdown("""
 #  Constants  –  new finance / Asia-APAC-SEA focused categories
 # ──────────────────────────────────────────────────────────────────────────────
 CATEGORY_ICONS: dict[str, str] = {
-    "Stocks":                "📈",
-    "Fiats":                 "💱",
-    "Indexes":               "📊",
-    "Regional":              "🌏",
-    "Country Credit":        "🏦",
-    "Alternative Lending":   "🤝",
-    "Fintech":               "💳",
-    "Start-up":              "🚀",
-    "Sustainable Finance":   "🌿",
-    "Marketing & Entertainment": "🎬",
+    "Stocks":              "📈",
+    "Fiats":               "💱",
+    "Indexes":             "📊",
+    "Regional":            "🌏",
+    "Country Credit":      "🏦",
+    "Alternative Lending": "🤝",
+    "Fintech":             "💳",
+    "Start-up":            "🚀",
+    "Sustainable Finance": "🌿",
+    "Marketing":           "📣",
+    "Entertainment":       "🎬",
 }
 
 # ── Trusted sources per category ─────────────────────────────────────────────
@@ -209,11 +239,17 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Channel NewsAsia (CNA)", "Eco-Business", "MAS (Monetary Authority of Singapore)",
         "Asian Development Bank", "Carbon Brief", "GreenBiz",
     ],
-    "Marketing & Entertainment": [
+    "Marketing": [
         "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
-        "Variety Asia", "South China Morning Post", "The Straits Times",
-        "Channel NewsAsia (CNA)", "Billboard", "Hollywood Reporter",
-        "Tatler Asia",
+        "The Drum", "Adweek", "South China Morning Post",
+        "The Straits Times", "Channel NewsAsia (CNA)",
+        "Marketing Week", "Ad Age",
+    ],
+    "Entertainment": [
+        "Variety Asia", "Hollywood Reporter", "Deadline",
+        "South China Morning Post", "The Straits Times",
+        "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
+        "Nikkei Asia", "Vulcan Post",
     ],
 }
 
@@ -246,8 +282,11 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Sustainable Finance": (
         "sustainable finance ESG green bonds Singapore Asia APAC news today"
     ),
-    "Marketing & Entertainment": (
-        "marketing entertainment media advertising Asia Singapore APAC SEA news today"
+    "Marketing": (
+        "marketing advertising brand campaigns Asia Singapore APAC SEA news today"
+    ),
+    "Entertainment": (
+        "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today"
     ),
 }
 
@@ -297,10 +336,16 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "and SEA — especially Singapore (MAS Green Finance Action Plan), ASEAN "
         "Taxonomy, and regional net-zero initiatives."
     ),
-    "Marketing & Entertainment": (
-        "Focus on marketing, advertising, media and entertainment in Asia, APAC and "
-        "SEA — especially Singapore, Malaysia, Indonesia, Thailand, Philippines, "
-        "Hong Kong, Japan, South Korea and China."
+    "Marketing": (
+        "Focus on marketing, advertising, branding, digital marketing and media campaigns "
+        "in Asia, APAC and SEA — especially Singapore, Malaysia, Indonesia, Thailand, "
+        "Philippines, Hong Kong, Japan, South Korea and China."
+    ),
+    "Entertainment": (
+        "Focus on entertainment news — movies, TV, music, streaming, gaming and celebrity "
+        "culture — in Asia, APAC and SEA. Prioritise content relevant to or produced in "
+        "Singapore, South Korea (K-pop/K-drama), Japan (anime/manga), China, Hong Kong, "
+        "India (Bollywood), Thailand, Malaysia, Indonesia and the Philippines."
     ),
 }
 
@@ -523,6 +568,7 @@ with st.sidebar:
         options=all_cats,
         default=["Stocks", "Fiats", "Fintech"],
         format_func=lambda c: f"{CATEGORY_ICONS.get(c, '')} {c}",
+        key="category_multiselect",
     )
 
     st.markdown("---")
