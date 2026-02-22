@@ -13,7 +13,7 @@ Only ONE API key needed: your Anthropic (Claude) key.
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 import anthropic
@@ -317,6 +317,10 @@ VERIFY_MEDIUM = 45   # score ≥ 45  → partially confirmed ⚠️
 #  PASS 1 – Search
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Categories where we want top-trending / most-important ranking
+HIGH_IMPACT_CATEGORIES = {"Stocks", "Fiats", "Indexes", "Country Credit"}
+
+
 def fetch_news_with_search(
     category: str,
     claude_api_key: str,
@@ -327,7 +331,14 @@ def fetch_news_with_search(
     Pass 1: Ask Claude to search the live web for the latest news in `category`.
     Returns a raw list of article dicts (title, source, published, url, summary, trusted).
     """
-    today       = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Use SGT (UTC+8) as the reference timezone — the app's primary audience is Singapore
+    sgt_offset  = timezone(timedelta(hours=8))
+    sgt_now     = datetime.now(timezone.utc).astimezone(sgt_offset)
+    now_sgt_str = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
+    # Strict cutoff: articles must be published AFTER this ISO timestamp
+    cutoff_utc  = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_str  = cutoff_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     trusted_str = ", ".join(TRUSTED_SOURCES.get(category, []))
     search_q    = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
     geo_focus   = CATEGORY_GEO_FOCUS.get(category, "")
@@ -337,14 +348,31 @@ def fetch_news_with_search(
         else f"Preferred trusted sources (prioritise these): {trusted_str}."
     )
 
-    prompt = f"""Today is {today}.
+    # Extra ranking instruction for high-impact market categories
+    if category in HIGH_IMPACT_CATEGORIES:
+        ranking_rule = (
+            "RANKING PRIORITY — do NOT pick random recent articles. "
+            "Select only the {n} most market-moving, widely-covered or trending stories: "
+            "stories with the highest reader interest, biggest price/policy impact, "
+            "or most citations across multiple outlets. "
+            "Prefer breaking news and stories that top financial news homepages right now."
+        ).format(n=n)
+    else:
+        ranking_rule = (
+            f"Select the {n} most significant and widely-reported stories within the scope above."
+        )
 
-Use the web_search tool to find the {n} most important news stories about **{category}** published in the last 24 hours.
+    prompt = f"""Current time: {now_sgt_str}  (UTC cutoff: {cutoff_str})
+
+Use the web_search tool to find the {n} most important news stories about **{category}**
+that were published STRICTLY AFTER {cutoff_str} (i.e. within the last 24 hours only).
 
 Search query to use: "{search_q}"
 
 Geographic / editorial focus:
 {geo_focus}
+
+{ranking_rule}
 
 {source_rule}
 
@@ -352,15 +380,16 @@ After searching, return ONLY a raw JSON array (no markdown, no explanation) with
 Each item must have these fields:
   "title"     : exact headline from the article (string)
   "source"    : name of the news outlet (string)
-  "published" : publication date/time if available, else "{today}" (string)
+  "published" : publication ISO datetime of the article, e.g. "2026-02-22T14:30:00Z" (string)
   "url"       : the real, full URL of the article — MUST be a working link you found (string)
   "summary"   : your 1-2 sentence summary of the story (string)
   "trusted"   : true if the source is in [{trusted_str}], else false (boolean)
 
-Rules:
+STRICT RULES:
+- REJECT any article published before {cutoff_str} — do not include it regardless of relevance.
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
 - Apply the geographic/editorial focus strictly.
-- If you find fewer than {n} articles, return however many you found.
+- If you find fewer than {n} qualifying articles, return however many you found.
 - Do NOT wrap in markdown code fences — return the raw JSON array only.
 """
     return _run_claude_search(prompt, category, claude_api_key, n)
@@ -634,16 +663,34 @@ def df_to_excel(dfs: dict[str, pd.DataFrame]) -> bytes:
 
 
 def format_age(pub: str) -> str:
+    """Return a human-readable age string, always in SGT context."""
     try:
-        dt  = datetime.strptime(pub[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        # Handle both 'Z' suffix and naive strings
+        clean = pub[:19].replace("Z", "")
+        dt = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
         age = datetime.now(timezone.utc) - dt
-        h   = int(age.total_seconds() // 3600)
-        m   = int((age.total_seconds() % 3600) // 60)
+        total_secs = age.total_seconds()
+        if total_secs < 0:
+            # Future-dated — show the date
+            return pub[:10]
+        h = int(total_secs // 3600)
+        m = int((total_secs % 3600) // 60)
         if h > 48:
             return pub[:10]
         return f"{h}h {m}m ago" if h else f"{m}m ago"
     except Exception:
         return pub[:10] if pub else "recent"
+
+
+def is_within_24h(pub: str) -> bool:
+    """Return True if the article's published timestamp is within the last 24 hours."""
+    try:
+        clean = pub[:19].replace("Z", "")
+        dt  = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        return 0 <= age.total_seconds() <= 86400   # 24 h = 86 400 s
+    except Exception:
+        return True   # if we can't parse, keep the article (don't silently drop)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -884,6 +931,16 @@ if search_btn or st.session_state.get("last_results"):
 
                 card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status)
 
+                # ── staleness warning (outside 24 h window) ───────────────────
+                stale_html = ""
+                if pub and not is_within_24h(pub):
+                    stale_html = (
+                        "<div style='font-size:.75rem;color:#b45309;background:#fef3c7;"
+                        "border:1px solid #fde68a;border-radius:5px;padding:.3rem .6rem;"
+                        "margin:.4rem 0;'>⚠️ <b>Outside 24h window</b> — "
+                        f"published {pub[:10]}</div>"
+                    )
+
                 summary_html = (
                     f"<p class='summary-text'>"
                     f"{summary[:280]}{'…' if len(summary) > 280 else ''}</p>"
@@ -895,16 +952,23 @@ if search_btn or st.session_state.get("last_results"):
                     f"</div>"
                 ) if v_note and v_status != "skipped" else ""
 
+                # Source badge is now a clickable link to the article
+                source_badge = (
+                    f"<a href='{url}' target='_blank' style='text-decoration:none;'>"
+                    f"<span class='badge badge-source'>🗞️ {source} ↗</span></a>"
+                )
+
                 st.markdown(f"""
                 <div class="news-card {card_cls}">
                     <p class="headline">{title}</p>
                     <div class="meta">
-                        <span class="badge badge-source">🗞️ {source}</span>
+                        {source_badge}
                         <span class="badge badge-cat">{icon} {cat}</span>
                         <span class="badge badge-time">🕐 {age_str}</span>
                         <span class="badge {trust_cls}">{trust_lbl}</span>
                         <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
                     </div>
+                    {stale_html}
                     {summary_html}
                     {verify_note_html}
                     <a href="{url}" target="_blank">🔗 Read full article →</a>
