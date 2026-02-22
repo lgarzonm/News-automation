@@ -144,6 +144,55 @@ st.markdown("""
     /* ── Summary / verify text ── */
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 
+    /* ── Slider → navy blue thumb + track ── */
+    [data-testid="stSlider"] [role="slider"] {
+        background-color: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+        box-shadow: 0 0 0 3px rgba(26,58,110,.2) !important;
+    }
+    /* filled (left) portion of the slider track */
+    [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:first-child,
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child > div {
+        background-color: #1a3a6e !important;
+    }
+    /* thumb dot */
+    [data-testid="stSlider"] div[role="slider"] {
+        background: #1a3a6e !important;
+        border: 2px solid #1a3a6e !important;
+    }
+
+    /* ── Checkbox → navy blue ── */
+    [data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
+    [data-testid="stCheckbox"] label [data-testid="stWidgetLabel"] ~ div div {
+        background-color: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+    }
+    /* BaseWeb checkbox checked state */
+    [data-baseweb="checkbox"] [data-checked="true"] div,
+    [data-baseweb="checkbox"] input:checked ~ div {
+        background-color: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+    }
+    /* Streamlit internal SVG checkbox tick */
+    .stCheckbox > label > div[data-testid] svg { color: #1a3a6e !important; fill: #1a3a6e !important; }
+    /* catch-all: any red/primary accent in sidebar widgets */
+    [data-testid="stSidebar"] [data-baseweb="checkbox"] > label > span:first-child {
+        background-color: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+        outline-color: #1a3a6e !important;
+    }
+    [data-testid="stSidebar"] input[type="range"]::-webkit-slider-thumb {
+        background: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+    }
+    [data-testid="stSidebar"] input[type="range"]::-moz-range-thumb {
+        background: #1a3a6e !important;
+        border-color: #1a3a6e !important;
+    }
+    [data-testid="stSidebar"] input[type="range"]::-webkit-slider-runnable-track {
+        background: linear-gradient(to right, #1a3a6e var(--val,50%), #d0d9e8 var(--val,50%)) !important;
+    }
+
     /* ── Multiselect tags → navy blue ── */
     [data-baseweb="tag"] { background-color: #1a3a6e !important; border-color: #1a3a6e !important; }
     [data-baseweb="tag"] span[data-testid="stMultiSelectTag"] { color: #ffffff !important; }
@@ -614,18 +663,25 @@ def _run_claude_search(
 #  Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def verify_css_class(score: int, status: str) -> tuple[str, str, str]:
+def verify_css_class(score: int, status: str, trusted_only: bool = False) -> tuple[str, str, str]:
     """
     Returns (card_extra_class, badge_class, badge_label) based on
     the verification score / status.
+
+    When trusted_only=True the 'skipped / not-verified' state is shown as
+    'Trusted Source' (navy) rather than a confusing grey badge, because
+    the article is already guaranteed to come from a curated outlet.
     """
     if status == "skipped" or score < 0:
-        return "", "badge-verify-skip", "🔘 Not verified"
+        if trusted_only:
+            # Already filtered to trusted outlets — no need to show 'Not verified'
+            return "verified-high", "badge-verify-high", "✅ Trusted Source"
+        return "", "badge-verify-skip", "🔘 Pending verification"
     if score >= VERIFY_HIGH:
-        return "verified-high",   "badge-verify-high",   f"✅ Confirmed ({score}%)"
+        return "verified-high",   "badge-verify-high",   f"✅ Verified ({score}%)"
     if score >= VERIFY_MEDIUM:
-        return "verified-medium", "badge-verify-medium", f"⚠️ Partial ({score}%)"
-    return "verified-low", "badge-verify-low", f"❌ Unconfirmed ({score}%)"
+        return "verified-medium", "badge-verify-medium", f"⚠️ Partially verified ({score}%)"
+    return "verified-low", "badge-verify-low", f"❌ Could not verify ({score}%)"
 
 
 def articles_to_df(articles: list[dict], category: str) -> pd.DataFrame:
@@ -929,7 +985,7 @@ if search_btn or st.session_state.get("last_results"):
                 trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
                 trust_lbl  = "✅ Trusted"       if trusted else "⚠️ Unverified"
 
-                card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status)
+                card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status, trusted_only)
 
                 # ── staleness warning (outside 24 h window) ───────────────────
                 stale_html = ""
