@@ -26,113 +26,282 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  CSS
+#  CSS  –  light / soft-grey theme  +  navy-blue accents
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .block-container{padding-top:2rem;padding-bottom:2rem}
-
-    .app-header{
-        background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
-        border-radius:16px;padding:2rem 2.5rem;margin-bottom:2rem;text-align:center
+    /* ── Global background ── */
+    .stApp {
+        background-color: #f0f2f6;
     }
-    .app-header h1{color:#e94560;font-size:2.6rem;margin:0}
-    .app-header p{color:#a8b2d8;font-size:1.05rem;margin-top:.5rem}
-
-    .metric-row{display:flex;gap:1rem;margin-bottom:1.5rem}
-    .metric-card{
-        flex:1;background:#16213e;border:1px solid #0f3460;border-radius:12px;
-        padding:1rem 1.4rem;text-align:center
-    }
-    .metric-card .value{font-size:2rem;font-weight:700;color:#e94560}
-    .metric-card .label{font-size:.85rem;color:#a8b2d8;margin-top:.2rem}
-
-    .news-card{
-        background:#16213e;border:1px solid #0f3460;
-        border-left:4px solid #e94560;border-radius:10px;
-        padding:1rem 1.3rem;margin-bottom:.9rem
-    }
-    .news-card:hover{border-left-color:#f5a623}
-    .news-card .headline{
-        color:#e2e8f0;font-size:1rem;font-weight:600;
-        line-height:1.45;margin:0 0 .55rem 0
-    }
-    .news-card .meta{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
-    .badge{font-size:.72rem;padding:.2rem .6rem;border-radius:20px;font-weight:600}
-    .badge-source{background:#0f3460;color:#63b3ed}
-    .badge-cat{background:#2d3748;color:#f6ad55}
-    .badge-time{background:#1a202c;color:#68d391}
-    .badge-trust-yes{background:#1c3a2b;color:#68d391}
-    .badge-trust-no{background:#3a2a1c;color:#f6ad55}
-    .news-card a{font-size:.8rem;color:#667eea;text-decoration:none}
-    .news-card a:hover{text-decoration:underline}
-
-    .section-title{
-        color:#e94560;font-size:1.3rem;font-weight:700;
-        border-bottom:2px solid #e94560;padding-bottom:.4rem;margin-bottom:1.2rem
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        background-color: #f0f2f6;
     }
 
-    [data-testid="stSidebar"]{background:#0d1117}
-    [data-testid="stSidebar"] .stMarkdown h3{color:#e94560!important}
-
-    .stDownloadButton>button{
-        background:linear-gradient(135deg,#e94560,#f5a623)!important;
-        color:white!important;border:none!important;border-radius:8px!important;
-        font-weight:600!important;padding:.55rem 1.2rem!important
+    /* ── App header ── */
+    .app-header {
+        background: linear-gradient(135deg, #0a1628 0%, #0d2150 50%, #1a3a6e 100%);
+        border-radius: 16px;
+        padding: 2rem 2.5rem;
+        margin-bottom: 2rem;
+        text-align: center;
     }
-    .stDownloadButton>button:hover{opacity:.85!important}
+    .app-header h1 { color: #ffffff; font-size: 2.6rem; margin: 0; }
+    .app-header p  { color: #b8c9e8; font-size: 1.05rem; margin-top: .5rem; }
 
-    .pill-claude{
-        display:inline-block;
-        background:linear-gradient(135deg,#6B46C1,#9F7AEA);
-        color:white;font-size:.7rem;font-weight:700;
-        padding:.2rem .8rem;border-radius:20px;letter-spacing:.05em
+    /* ── Metric cards ── */
+    .metric-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+    .metric-card {
+        flex: 1;
+        background: #ffffff;
+        border: 1px solid #d0d9e8;
+        border-radius: 12px;
+        padding: 1rem 1.4rem;
+        text-align: center;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
     }
+    .metric-card .value { font-size: 2rem; font-weight: 700; color: #1a3a6e; }
+    .metric-card .label { font-size: .85rem; color: #5a6a84; margin-top: .2rem; }
+
+    /* ── News cards ── */
+    .news-card {
+        background: #ffffff;
+        border: 1px solid #d0d9e8;
+        border-left: 4px solid #1a3a6e;
+        border-radius: 10px;
+        padding: 1rem 1.3rem;
+        margin-bottom: .9rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    }
+    .news-card:hover { border-left-color: #2e6db4; box-shadow: 0 3px 10px rgba(26,58,110,.12); }
+    .news-card .headline {
+        color: #1a202c;
+        font-size: 1rem;
+        font-weight: 600;
+        line-height: 1.45;
+        margin: 0 0 .55rem 0;
+    }
+    .news-card .meta { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+
+    /* ── Badges ── */
+    .badge { font-size: .72rem; padding: .2rem .6rem; border-radius: 20px; font-weight: 600; }
+    .badge-source   { background: #dbeafe; color: #1e40af; }
+    .badge-cat      { background: #e0e7ff; color: #3730a3; }
+    .badge-time     { background: #dcfce7; color: #166534; }
+    .badge-trust-yes { background: #dcfce7; color: #166534; }
+    .badge-trust-no  { background: #fef3c7; color: #92400e; }
+    .news-card a { font-size: .8rem; color: #2563eb; text-decoration: none; }
+    .news-card a:hover { text-decoration: underline; }
+
+    /* ── Section titles ── */
+    .section-title {
+        color: #1a3a6e;
+        font-size: 1.3rem;
+        font-weight: 700;
+        border-bottom: 2px solid #1a3a6e;
+        padding-bottom: .4rem;
+        margin-bottom: 1.2rem;
+    }
+
+    /* ── Sidebar ── */
+    [data-testid="stSidebar"] { background: #eef1f7; }
+    [data-testid="stSidebar"] .stMarkdown h3 { color: #1a3a6e !important; }
+
+    /* ── Download button ── */
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #1a3a6e, #2e6db4) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: .55rem 1.2rem !important;
+    }
+    .stDownloadButton > button:hover { opacity: .85 !important; }
+
+    /* ── Search / primary button ── */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #1a3a6e, #2e6db4) !important;
+        border: none !important;
+        color: white !important;
+        font-weight: 700 !important;
+    }
+    .stButton > button[kind="primary"]:hover { opacity: .88 !important; }
+
+    /* ── Powered-by pill ── */
+    .pill-claude {
+        display: inline-block;
+        background: linear-gradient(135deg, #1a3a6e, #2e6db4);
+        color: white;
+        font-size: .7rem;
+        font-weight: 700;
+        padding: .2rem .8rem;
+        border-radius: 20px;
+        letter-spacing: .05em;
+    }
+
+    /* ── Summary text ── */
+    .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Constants
+#  Constants  –  new finance / Asia-APAC-SEA focused categories
 # ──────────────────────────────────────────────────────────────────────────────
 CATEGORY_ICONS: dict[str, str] = {
-    "Technology":            "💻",
-    "Finance & Markets":     "📈",
-    "Politics":              "🏛️",
-    "Science":               "🔬",
-    "Health & Medicine":     "🏥",
-    "Business":              "💼",
-    "AI & Machine Learning": "🤖",
-    "Environment":           "🌿",
-    "Sports":                "⚽",
-    "Entertainment":         "🎬",
+    "Stocks":                "📈",
+    "Fiats":                 "💱",
+    "Indexes":               "📊",
+    "Regional":              "🌏",
+    "Country Credit":        "🏦",
+    "Alternative Lending":   "🤝",
+    "Fintech":               "💳",
+    "Start-up":              "🚀",
+    "Sustainable Finance":   "🌿",
+    "Marketing & Entertainment": "🎬",
 }
 
-# Trusted source names per category (used in prompt + trust badge)
+# ── Trusted sources per category ─────────────────────────────────────────────
 TRUSTED_SOURCES: dict[str, list[str]] = {
-    "Technology":            ["TechCrunch", "Wired", "The Verge", "Ars Technica", "Engadget", "MIT Technology Review"],
-    "Finance & Markets":     ["Bloomberg", "Reuters", "Financial Times", "Wall Street Journal", "CNBC", "The Economist"],
-    "Politics":              ["Reuters", "BBC", "AP News", "Politico", "The Guardian", "NPR"],
-    "Science":               ["Scientific American", "Nature", "New Scientist", "Science Daily", "Live Science", "National Geographic"],
-    "Health & Medicine":     ["WHO", "WebMD", "Healthline", "STAT News", "MedPage Today", "The Lancet"],
-    "Business":              ["Bloomberg", "Forbes", "Business Insider", "Reuters", "Fortune", "Harvard Business Review"],
-    "AI & Machine Learning": ["VentureBeat", "TechCrunch", "Wired", "MIT Technology Review", "The Next Web", "IEEE Spectrum"],
-    "Environment":           ["The Guardian", "BBC", "National Geographic", "Carbon Brief", "Climate Central", "Inside Climate News"],
-    "Sports":                ["ESPN", "BBC Sport", "Sky Sports", "The Athletic", "Sports Illustrated", "Reuters"],
-    "Entertainment":         ["Variety", "Hollywood Reporter", "Deadline", "Entertainment Weekly", "Rolling Stone", "Pitchfork"],
+    "Stocks": [
+        "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
+        "CNBC", "Nikkei Asia", "South China Morning Post", "The Straits Times",
+        "Business Times Singapore", "Seeking Alpha",
+    ],
+    "Fiats": [
+        "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
+        "CNBC", "FX Street", "Investopedia", "Nikkei Asia",
+        "South China Morning Post", "MAS (Monetary Authority of Singapore)",
+    ],
+    "Indexes": [
+        "Bloomberg", "Reuters", "Financial Times", "CNBC",
+        "Nikkei Asia", "South China Morning Post", "Business Times Singapore",
+        "The Straits Times", "Morningstar", "S&P Global",
+    ],
+    "Regional": [
+        "Nikkei Asia", "South China Morning Post", "The Straits Times",
+        "Bangkok Post", "The Jakarta Post", "Philippine Daily Inquirer",
+        "Vietnam News", "Reuters", "Bloomberg", "Channel NewsAsia (CNA)",
+    ],
+    "Country Credit": [
+        "Bloomberg", "Reuters", "Financial Times", "Moody's",
+        "S&P Global", "Fitch Ratings", "The Straits Times",
+        "Nikkei Asia", "South China Morning Post", "Asian Development Bank",
+    ],
+    "Alternative Lending": [
+        "Bloomberg", "Reuters", "Fintech News Singapore", "e27",
+        "Deal Street Asia", "Tech in Asia", "The Business Times",
+        "Crowdfund Insider", "Lending Times", "AltFi",
+    ],
+    "Fintech": [
+        "Fintech News Singapore", "e27", "Deal Street Asia", "Tech in Asia",
+        "TechCrunch", "Bloomberg", "Reuters", "The Business Times",
+        "Channel NewsAsia (CNA)", "Fintechnews.sg",
+    ],
+    "Start-up": [
+        "e27", "Tech in Asia", "Deal Street Asia", "TechCrunch",
+        "Bloomberg", "Reuters", "Channel NewsAsia (CNA)",
+        "The Straits Times", "KrASIA", "Vulcan Post",
+    ],
+    "Sustainable Finance": [
+        "Bloomberg Green", "Reuters", "Financial Times", "The Straits Times",
+        "Channel NewsAsia (CNA)", "Eco-Business", "MAS (Monetary Authority of Singapore)",
+        "Asian Development Bank", "Carbon Brief", "GreenBiz",
+    ],
+    "Marketing & Entertainment": [
+        "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
+        "Variety Asia", "South China Morning Post", "The Straits Times",
+        "Channel NewsAsia (CNA)", "Billboard", "Hollywood Reporter",
+        "Tatler Asia",
+    ],
 }
 
-# Search queries Claude uses when web-searching per category
+# ── Search queries – global for Stocks/Fiats, Asia/APAC/SEA for the rest ─────
 CATEGORY_SEARCH_QUERIES: dict[str, str] = {
-    "Technology":            "latest technology news today",
-    "Finance & Markets":     "financial markets economy news today",
-    "Politics":              "politics government news today",
-    "Science":               "science research discovery news today",
-    "Health & Medicine":     "health medicine medical news today",
-    "Business":              "business corporate news today",
-    "AI & Machine Learning": "artificial intelligence AI news today",
-    "Environment":           "environment climate news today",
-    "Sports":                "sports news today",
-    "Entertainment":         "entertainment movies music news today",
+    "Stocks": (
+        "global stock market equities news today Asia APAC"
+    ),
+    "Fiats": (
+        "forex currency exchange rates USD EUR JPY SGD AUD news today"
+    ),
+    "Indexes": (
+        "stock market index STI Nikkei Hang Seng ASX S&P 500 MSCI Asia news today"
+    ),
+    "Regional": (
+        "Asia APAC Southeast Asia SEA Singapore economy finance news today"
+    ),
+    "Country Credit": (
+        "sovereign credit rating Asia APAC Singapore bonds debt news today"
+    ),
+    "Alternative Lending": (
+        "alternative lending P2P crowdfunding credit Asia Singapore fintech news today"
+    ),
+    "Fintech": (
+        "fintech financial technology Singapore Asia APAC payments digital banking news today"
+    ),
+    "Start-up": (
+        "startup funding venture capital Asia Singapore APAC SEA news today"
+    ),
+    "Sustainable Finance": (
+        "sustainable finance ESG green bonds Singapore Asia APAC news today"
+    ),
+    "Marketing & Entertainment": (
+        "marketing entertainment media advertising Asia Singapore APAC SEA news today"
+    ),
+}
+
+# ── Geo-context injected into the Claude prompt for each category ─────────────
+# For Stocks and Fiats the focus is global; for all others we add Asia/SEA context.
+CATEGORY_GEO_FOCUS: dict[str, str] = {
+    "Stocks": (
+        "Coverage should be global (US, Europe, Asia), with special attention to "
+        "Asian and APAC equity markets."
+    ),
+    "Fiats": (
+        "Coverage should be global, focusing on major currency pairs as well as "
+        "Asian currencies (SGD, JPY, CNY, KRW, INR, AUD, HKD, MYR, IDR, THB)."
+    ),
+    "Indexes": (
+        "Prioritise Asian and APAC indexes: STI (Singapore), Nikkei 225, Hang Seng, "
+        "ASX 200, KOSPI, CSI 300, MSCI Asia. Include global benchmarks (S&P 500, FTSE) "
+        "only for context."
+    ),
+    "Regional": (
+        "Focus EXCLUSIVELY on Asia, APAC, and Southeast Asia (SEA) — especially "
+        "Singapore, Malaysia, Indonesia, Thailand, Vietnam, Philippines, Hong Kong, "
+        "China, Japan, South Korea, Australia. No stories from outside these regions."
+    ),
+    "Country Credit": (
+        "Focus on sovereign and quasi-sovereign credit for Asian and APAC countries: "
+        "Singapore, China, Japan, South Korea, India, Indonesia, Malaysia, Thailand, "
+        "Philippines, Vietnam, Hong Kong, Australia, New Zealand."
+    ),
+    "Alternative Lending": (
+        "Focus on alternative lending, P2P finance, and digital credit in Asia, APAC "
+        "and SEA — especially Singapore, Indonesia, Malaysia, Thailand, Philippines, "
+        "Vietnam and China."
+    ),
+    "Fintech": (
+        "Focus on fintech, digital banking, payments, crypto-regulation and wealthtech "
+        "in Asia, APAC and SEA — especially Singapore, Hong Kong, Indonesia, Malaysia, "
+        "Thailand, the Philippines, Vietnam, China, Japan and South Korea."
+    ),
+    "Start-up": (
+        "Focus on startup ecosystem news in Asia, APAC and SEA — especially "
+        "Singapore, Indonesia, Malaysia, Thailand, Vietnam, Philippines, India, "
+        "Hong Kong and China."
+    ),
+    "Sustainable Finance": (
+        "Focus on sustainable finance, ESG, green and transition bonds in Asia, APAC "
+        "and SEA — especially Singapore (MAS Green Finance Action Plan), ASEAN "
+        "Taxonomy, and regional net-zero initiatives."
+    ),
+    "Marketing & Entertainment": (
+        "Focus on marketing, advertising, media and entertainment in Asia, APAC and "
+        "SEA — especially Singapore, Malaysia, Indonesia, Thailand, Philippines, "
+        "Hong Kong, Japan, South Korea and China."
+    ),
 }
 
 CLAUDE_MODEL = "claude-opus-4-5"
@@ -155,7 +324,9 @@ def fetch_news_with_search(
     today        = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
     search_query = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
-    source_rule  = (
+    geo_focus    = CATEGORY_GEO_FOCUS.get(category, "")
+
+    source_rule = (
         f"ONLY include articles from these trusted sources: {trusted_str}."
         if trusted_only
         else f"Preferred trusted sources (prioritise these): {trusted_str}."
@@ -166,6 +337,9 @@ def fetch_news_with_search(
 Use the web_search tool to find the {n} most important news stories about **{category}** published in the last 24 hours.
 
 Search query to use: "{search_query}"
+
+Geographic / editorial focus:
+{geo_focus}
 
 {source_rule}
 
@@ -180,6 +354,7 @@ Each item must have these fields:
 
 Rules:
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
+- Apply the geographic/editorial focus strictly — only include stories relevant to that scope.
 - If you find fewer than {n} articles, return however many you found.
 - Do NOT wrap in markdown code fences — return the raw JSON array only.
 """
@@ -187,7 +362,6 @@ Rules:
     try:
         client = anthropic.Anthropic(api_key=claude_api_key)
 
-        # Define the web_search tool for Claude
         tools = [
             {
                 "type": "web_search_20250305",
@@ -206,22 +380,15 @@ Rules:
                 messages=messages,
             )
 
-            # If Claude is done (no more tool calls), extract the JSON
             if response.stop_reason == "end_turn":
                 break
 
-            # If Claude wants to use a tool, add its response to messages
-            # and continue the loop (Anthropic handles tool execution server-side)
             if response.stop_reason == "tool_use":
-                # Add assistant's response to message history
                 messages.append({"role": "assistant", "content": response.content})
 
-                # Build tool_result blocks for each tool_use block
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        # With server-side tools, the result comes back automatically
-                        # We just need to acknowledge and let the loop continue
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -232,7 +399,6 @@ Rules:
                     messages.append({"role": "user", "content": tool_results})
                 continue
 
-            # Any other stop reason — break out
             break
 
         # Extract text from the final response
@@ -248,7 +414,7 @@ Rules:
         raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
         raw = raw.strip()
 
-        # Extract JSON array (handle cases where Claude adds preamble text)
+        # Extract JSON array
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:
             st.warning(f"⚠️ Claude did not return a JSON array for **{category}**.")
@@ -267,7 +433,6 @@ Rules:
         st.error("⏳ **Claude rate limit reached.** Wait a moment and try again.")
         return []
     except anthropic.APIError as e:
-        # Check if web_search tool is not available on this tier
         err_str = str(e)
         if "web_search" in err_str.lower() or "tool" in err_str.lower():
             st.error(
@@ -356,14 +521,14 @@ with st.sidebar:
     selected_cats = st.multiselect(
         "Select categories",
         options=all_cats,
-        default=["Technology", "Finance & Markets", "AI & Machine Learning"],
+        default=["Stocks", "Fiats", "Fintech"],
         format_func=lambda c: f"{CATEGORY_ICONS.get(c, '')} {c}",
     )
 
     st.markdown("---")
     st.markdown("### 🔍 Options")
     max_per_cat  = st.slider("Articles per category", 3, 10, 5)
-    trusted_only = st.checkbox("Trusted sources only", value=False)
+    trusted_only = st.checkbox("Trusted sources only", value=True)
 
     st.markdown("---")
     st.markdown("### ℹ️ How it works")
@@ -371,6 +536,8 @@ with st.sidebar:
 **One key. Real news.**
 
 Claude uses its built-in **web search** tool to find articles published in the last **24 hours**, returning real headlines, working URLs, real sources and editorial summaries — all via your single Claude API key.
+
+*Non-Stocks/Fiats categories are focused on **Asia · APAC · SEA** news.*
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -379,7 +546,7 @@ Claude uses its built-in **web search** tool to find articles published in the l
 st.markdown("""
 <div class="app-header">
     <h1>📰 24h News Explorer</h1>
-    <p>Claude searches the live web &nbsp;·&nbsp; Real articles &nbsp;·&nbsp; Working links &nbsp;·&nbsp; Export to Excel</p>
+    <p>Claude searches the live web &nbsp;·&nbsp; Real articles &nbsp;·&nbsp; Working links &nbsp;·&nbsp; Asia · APAC · SEA focus &nbsp;·&nbsp; Export to Excel</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -416,7 +583,7 @@ if search_btn or st.session_state.get("last_results"):
         status   = st.empty()
 
         for i, cat in enumerate(selected_cats):
-            pct = (i + 1) / len(selected_cats)
+            pct  = (i + 1) / len(selected_cats)
             icon = CATEGORY_ICONS.get(cat, "📌")
 
             status.markdown(f"🌐 **Claude is searching the web** for *{icon} {cat}* news…")
@@ -485,19 +652,19 @@ if search_btn or st.session_state.get("last_results"):
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
             for art in articles:
-                title   = art.get("title",   "No title")
-                source  = art.get("source",  "Unknown")
-                url     = art.get("url",     "#")
+                title   = art.get("title",     "No title")
+                source  = art.get("source",    "Unknown")
+                url     = art.get("url",       "#")
                 pub     = art.get("published", "")
-                summary = art.get("summary", "")
-                trusted = art.get("trusted", False)
+                summary = art.get("summary",   "")
+                trusted = art.get("trusted",   False)
 
                 age_str     = format_age(pub)
                 trust_cls   = "badge-trust-yes" if trusted else "badge-trust-no"
                 trust_label = "✅ Trusted"       if trusted else "⚠️ Unverified"
 
                 summary_html = (
-                    f"<p style='color:#94a3b8;font-size:.85rem;margin:.6rem 0 .4rem 0'>"
+                    f"<p class='summary-text'>"
                     f"{summary[:240]}{'…' if len(summary) > 240 else ''}</p>"
                 ) if summary else ""
 
