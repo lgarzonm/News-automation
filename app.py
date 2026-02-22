@@ -1,22 +1,19 @@
 """
 24h News Explorer
 ─────────────────
-Architecture:
-  1. NewsAPI.org  → fetches REAL articles published in the last 24 h (live URLs, real dates)
-  2. Claude API   → acts as an intelligent curator: filters noise, ranks relevance,
-                    adds a short editorial summary, and flags trusted sources.
-
-Both API keys are entered by the user in the sidebar.
+Uses Claude with the built-in `web_search` tool (Anthropic API).
+Claude searches the live web for real news published in the last 24 hours,
+returns verified headlines, real URLs, real sources and editorial summaries.
+Only ONE API key needed: your Anthropic (Claude) key.
 """
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 
 import anthropic
 import pandas as pd
-import requests
 import streamlit as st
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -35,7 +32,6 @@ st.markdown("""
 <style>
     .block-container{padding-top:2rem;padding-bottom:2rem}
 
-    /* header */
     .app-header{
         background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
         border-radius:16px;padding:2rem 2.5rem;margin-bottom:2rem;text-align:center
@@ -43,7 +39,6 @@ st.markdown("""
     .app-header h1{color:#e94560;font-size:2.6rem;margin:0}
     .app-header p{color:#a8b2d8;font-size:1.05rem;margin-top:.5rem}
 
-    /* metric row */
     .metric-row{display:flex;gap:1rem;margin-bottom:1.5rem}
     .metric-card{
         flex:1;background:#16213e;border:1px solid #0f3460;border-radius:12px;
@@ -52,7 +47,6 @@ st.markdown("""
     .metric-card .value{font-size:2rem;font-weight:700;color:#e94560}
     .metric-card .label{font-size:.85rem;color:#a8b2d8;margin-top:.2rem}
 
-    /* news cards */
     .news-card{
         background:#16213e;border:1px solid #0f3460;
         border-left:4px solid #e94560;border-radius:10px;
@@ -73,17 +67,14 @@ st.markdown("""
     .news-card a{font-size:.8rem;color:#667eea;text-decoration:none}
     .news-card a:hover{text-decoration:underline}
 
-    /* section title */
     .section-title{
         color:#e94560;font-size:1.3rem;font-weight:700;
         border-bottom:2px solid #e94560;padding-bottom:.4rem;margin-bottom:1.2rem
     }
 
-    /* sidebar */
     [data-testid="stSidebar"]{background:#0d1117}
     [data-testid="stSidebar"] .stMarkdown h3{color:#e94560!important}
 
-    /* download button */
     .stDownloadButton>button{
         background:linear-gradient(135deg,#e94560,#f5a623)!important;
         color:white!important;border:none!important;border-radius:8px!important;
@@ -91,16 +82,11 @@ st.markdown("""
     }
     .stDownloadButton>button:hover{opacity:.85!important}
 
-    /* pill badges */
     .pill-claude{
-        display:inline-block;background:linear-gradient(135deg,#6B46C1,#9F7AEA);
-        color:white;font-size:.7rem;font-weight:700;padding:.2rem .7rem;
-        border-radius:20px;letter-spacing:.05em
-    }
-    .pill-news{
-        display:inline-block;background:linear-gradient(135deg,#1a56db,#3b82f6);
-        color:white;font-size:.7rem;font-weight:700;padding:.2rem .7rem;
-        border-radius:20px;letter-spacing:.05em;margin-left:.3rem
+        display:inline-block;
+        background:linear-gradient(135deg,#6B46C1,#9F7AEA);
+        color:white;font-size:.7rem;font-weight:700;
+        padding:.2rem .8rem;border-radius:20px;letter-spacing:.05em
     }
 </style>
 """, unsafe_allow_html=True)
@@ -108,7 +94,6 @@ st.markdown("""
 # ──────────────────────────────────────────────────────────────────────────────
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────────
-
 CATEGORY_ICONS: dict[str, str] = {
     "Technology":            "💻",
     "Finance & Markets":     "📈",
@@ -122,266 +107,199 @@ CATEGORY_ICONS: dict[str, str] = {
     "Entertainment":         "🎬",
 }
 
-# Clean keyword queries for NewsAPI (no special chars)
-CATEGORY_QUERIES: dict[str, str] = {
-    "Technology":            "technology",
-    "Finance & Markets":     "finance OR markets OR economy OR stocks",
-    "Politics":              "politics OR government OR election OR policy",
-    "Science":               "science OR research OR discovery OR study",
-    "Health & Medicine":     "health OR medicine OR medical OR disease OR drug",
-    "Business":              "business OR corporate OR startup OR earnings",
-    "AI & Machine Learning": "artificial intelligence OR machine learning OR AI OR LLM",
-    "Environment":           "environment OR climate OR nature OR emissions OR energy",
-    "Sports":                "sports OR football OR basketball OR tennis OR soccer",
-    "Entertainment":         "entertainment OR movies OR music OR celebrity OR film",
+# Trusted source names per category (used in prompt + trust badge)
+TRUSTED_SOURCES: dict[str, list[str]] = {
+    "Technology":            ["TechCrunch", "Wired", "The Verge", "Ars Technica", "Engadget", "MIT Technology Review"],
+    "Finance & Markets":     ["Bloomberg", "Reuters", "Financial Times", "Wall Street Journal", "CNBC", "The Economist"],
+    "Politics":              ["Reuters", "BBC", "AP News", "Politico", "The Guardian", "NPR"],
+    "Science":               ["Scientific American", "Nature", "New Scientist", "Science Daily", "Live Science", "National Geographic"],
+    "Health & Medicine":     ["WHO", "WebMD", "Healthline", "STAT News", "MedPage Today", "The Lancet"],
+    "Business":              ["Bloomberg", "Forbes", "Business Insider", "Reuters", "Fortune", "Harvard Business Review"],
+    "AI & Machine Learning": ["VentureBeat", "TechCrunch", "Wired", "MIT Technology Review", "The Next Web", "IEEE Spectrum"],
+    "Environment":           ["The Guardian", "BBC", "National Geographic", "Carbon Brief", "Climate Central", "Inside Climate News"],
+    "Sports":                ["ESPN", "BBC Sport", "Sky Sports", "The Athletic", "Sports Illustrated", "Reuters"],
+    "Entertainment":         ["Variety", "Hollywood Reporter", "Deadline", "Entertainment Weekly", "Rolling Stone", "Pitchfork"],
 }
 
-# Trusted source domains for NewsAPI `domains` filter + trust badge logic
-TRUSTED_DOMAINS: dict[str, list[str]] = {
-    "Technology":            ["techcrunch.com", "wired.com", "theverge.com", "arstechnica.com", "engadget.com", "technologyreview.com"],
-    "Finance & Markets":     ["bloomberg.com", "reuters.com", "ft.com", "wsj.com", "cnbc.com", "economist.com"],
-    "Politics":              ["reuters.com", "bbc.co.uk", "apnews.com", "politico.com", "theguardian.com", "npr.org"],
-    "Science":               ["scientificamerican.com", "nature.com", "newscientist.com", "sciencedaily.com", "livescience.com", "nationalgeographic.com"],
-    "Health & Medicine":     ["who.int", "webmd.com", "healthline.com", "statnews.com", "medpagetoday.com", "thelancet.com"],
-    "Business":              ["bloomberg.com", "forbes.com", "businessinsider.com", "reuters.com", "fortune.com", "hbr.org"],
-    "AI & Machine Learning": ["venturebeat.com", "techcrunch.com", "wired.com", "technologyreview.com", "thenextweb.com"],
-    "Environment":           ["theguardian.com", "bbc.co.uk", "nationalgeographic.com", "carbonbrief.org", "climatecentral.org"],
-    "Sports":                ["espn.com", "bbc.co.uk", "skysports.com", "theathletic.com", "si.com"],
-    "Entertainment":         ["variety.com", "hollywoodreporter.com", "deadline.com", "ew.com", "rollingstone.com"],
+# Search queries Claude uses when web-searching per category
+CATEGORY_SEARCH_QUERIES: dict[str, str] = {
+    "Technology":            "latest technology news today",
+    "Finance & Markets":     "financial markets economy news today",
+    "Politics":              "politics government news today",
+    "Science":               "science research discovery news today",
+    "Health & Medicine":     "health medicine medical news today",
+    "Business":              "business corporate news today",
+    "AI & Machine Learning": "artificial intelligence AI news today",
+    "Environment":           "environment climate news today",
+    "Sports":                "sports news today",
+    "Entertainment":         "entertainment movies music news today",
 }
 
-NEWSAPI_BASE  = "https://newsapi.org/v2/everything"
-CLAUDE_MODEL  = "claude-opus-4-5"
-MAX_FETCH     = 20   # articles pulled from NewsAPI before Claude trims to user's N
+CLAUDE_MODEL = "claude-opus-4-5"
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Step 1 — NewsAPI: fetch real, live articles
+#  Core: ask Claude to web-search and return structured news
 # ──────────────────────────────────────────────────────────────────────────────
 
-def fetch_real_articles(category: str, news_api_key: str, trusted_only: bool) -> list[dict]:
-    """
-    Pull up to MAX_FETCH real articles from NewsAPI published in the last 24 h.
-    If trusted_only is True, restrict to the pre-vetted domain list.
-    """
-    from_dt = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    query   = CATEGORY_QUERIES[category]
-    domains = ",".join(TRUSTED_DOMAINS[category]) if trusted_only else None
-
-    params: dict = {
-        "q":        query,
-        "from":     from_dt,
-        "sortBy":   "publishedAt",
-        "language": "en",
-        "pageSize": MAX_FETCH,
-        "apiKey":   news_api_key,
-    }
-    if domains:
-        params["domains"] = domains
-
-    try:
-        resp = requests.get(NEWSAPI_BASE, params=params, timeout=15)
-        data = resp.json()
-
-        if data.get("status") != "ok":
-            code = data.get("code", "")
-            msg  = data.get("message", resp.text)
-            if code == "apiKeyInvalid":
-                st.error("❌ **Invalid NewsAPI key.** Get a free one at https://newsapi.org/register")
-            elif code == "rateLimited":
-                st.error("⏳ **NewsAPI rate limit hit.** Wait a moment and retry.")
-            else:
-                st.error(f"NewsAPI error for **{category}**: {msg}")
-            return []
-
-        articles = data.get("articles", [])
-        # Strip "[Removed]" placeholders NewsAPI sometimes returns
-        articles = [
-            a for a in articles
-            if a.get("title") and a["title"] != "[Removed]"
-            and a.get("url")  and a["url"]   != "https://removed.com"
-        ]
-        return articles
-
-    except requests.exceptions.ConnectionError:
-        st.error("🔌 Connection error — check your internet connection.")
-        return []
-    except requests.exceptions.Timeout:
-        st.error("⏱ NewsAPI request timed out. Please try again.")
-        return []
-    except Exception as e:
-        st.error(f"Unexpected error fetching news for **{category}**: {e}")
-        return []
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Step 2 — Claude: curate, rank, and summarise the real articles
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _articles_to_text(articles: list[dict]) -> str:
-    """Serialise NewsAPI articles into a compact text block for Claude."""
-    lines = []
-    for i, a in enumerate(articles, 1):
-        pub    = a.get("publishedAt", "")[:16].replace("T", " ")
-        source = (a.get("source") or {}).get("name", "Unknown")
-        title  = a.get("title",       "").replace("\n", " ")
-        desc   = (a.get("description") or "").replace("\n", " ")[:200]
-        url    = a.get("url", "")
-        lines.append(
-            f"{i}. [{source}] {title}\n"
-            f"   Published: {pub} UTC | URL: {url}\n"
-            f"   Description: {desc}"
-        )
-    return "\n\n".join(lines)
-
-
-def curate_with_claude(
+def fetch_news_with_search(
     category: str,
-    articles: list[dict],
     claude_api_key: str,
     n: int,
-    trusted_domains: list[str],
+    trusted_only: bool,
 ) -> list[dict]:
     """
-    Send the real articles to Claude.
-    Claude returns a ranked, deduplicated JSON list of the top-N stories.
+    Ask Claude to search the live web for the latest news in `category`.
+    Claude uses the built-in web_search tool, then returns a JSON array
+    of real articles with verified URLs.
     """
-    if not articles:
-        return []
+    today        = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
+    search_query = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
+    source_rule  = (
+        f"ONLY include articles from these trusted sources: {trusted_str}."
+        if trusted_only
+        else f"Preferred trusted sources (prioritise these): {trusted_str}."
+    )
 
-    articles_text = _articles_to_text(articles)
-    trusted_str   = ", ".join(trusted_domains)
-    today         = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    prompt = f"""Today is {today}.
 
-    prompt = f"""You are an expert news editor. Current time: {today}.
+Use the web_search tool to find the {n} most important news stories about **{category}** published in the last 24 hours.
 
-Below are {len(articles)} REAL news articles fetched from NewsAPI for the category "{category}".
-Your job is to select and return the TOP {n} most important, relevant, and recent stories.
+Search query to use: "{search_query}"
 
-Trusted sources for this category: {trusted_str}
+{source_rule}
+
+After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
+Each item must have these fields:
+  "title"     : exact headline from the article (string)
+  "source"    : name of the news outlet (string)
+  "published" : publication date/time if available, else "{today}" (string)
+  "url"       : the real, full URL of the article — MUST be a working link you found (string)
+  "summary"   : your 1-2 sentence summary of the story (string)
+  "trusted"   : true if the source is in [{trusted_str}], else false (boolean)
 
 Rules:
-- You MUST use ONLY the articles provided below — do NOT invent any new stories.
-- Preserve the EXACT original URL from each article — never modify or guess URLs.
-- Preserve the EXACT publishedAt timestamp.
-- Preserve the EXACT source name.
-- Write a concise 1–2 sentence editorial summary (field "summary") based on the title+description.
-- Set "trusted": true only if the source domain matches one of the trusted sources above.
-- Pick the most newsworthy and diverse set of stories — avoid near-duplicates.
-- Return EXACTLY {n} items (or fewer if fewer articles were provided).
-
-Return ONLY a raw JSON array (no markdown, no explanation) with these fields per item:
-  "title"      : original headline (string)
-  "source"     : source name (string)
-  "published"  : publishedAt value (string, e.g. "2026-02-22T14:30:00Z")
-  "url"        : original article URL (string) — MUST be copied exactly
-  "summary"    : your 1-2 sentence editorial summary (string)
-  "trusted"    : true or false (boolean)
-
-Articles to choose from:
-{articles_text}
-
-JSON array:"""
+- Every URL must be a real link you actually retrieved via web_search — never invent URLs.
+- If you find fewer than {n} articles, return however many you found.
+- Do NOT wrap in markdown code fences — return the raw JSON array only.
+"""
 
     try:
-        client  = anthropic.Anthropic(api_key=claude_api_key)
-        message = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
+        client = anthropic.Anthropic(api_key=claude_api_key)
+
+        # Define the web_search tool for Claude
+        tools = [
+            {
+                "type": "web_search_20250305",
+                "name": "web_search",
+            }
+        ]
+
+        messages = [{"role": "user", "content": prompt}]
+
+        # Agentic loop: keep going until Claude stops using tools
+        while True:
+            response = client.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=4096,
+                tools=tools,
+                messages=messages,
+            )
+
+            # If Claude is done (no more tool calls), extract the JSON
+            if response.stop_reason == "end_turn":
+                break
+
+            # If Claude wants to use a tool, add its response to messages
+            # and continue the loop (Anthropic handles tool execution server-side)
+            if response.stop_reason == "tool_use":
+                # Add assistant's response to message history
+                messages.append({"role": "assistant", "content": response.content})
+
+                # Build tool_result blocks for each tool_use block
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        # With server-side tools, the result comes back automatically
+                        # We just need to acknowledge and let the loop continue
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": "Search completed.",
+                        })
+
+                if tool_results:
+                    messages.append({"role": "user", "content": tool_results})
+                continue
+
+            # Any other stop reason — break out
+            break
+
+        # Extract text from the final response
+        raw = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                raw += block.text
+
+        raw = raw.strip()
+
         # Strip accidental markdown fences
         raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
         raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
         raw = raw.strip()
 
-        curated = json.loads(raw)
-        if not isinstance(curated, list):
+        # Extract JSON array (handle cases where Claude adds preamble text)
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            st.warning(f"⚠️ Claude did not return a JSON array for **{category}**.")
+            return []
+
+        articles = json.loads(match.group())
+        if not isinstance(articles, list):
             raise ValueError("Expected JSON array")
 
-        # Safety: make sure URLs were not hallucinated (must appear in original set)
-        original_urls = {a.get("url", "") for a in articles}
-        safe = []
-        for item in curated:
-            url = item.get("url", "")
-            if url not in original_urls:
-                # Fall back to finding the article by matching title
-                match = next(
-                    (a for a in articles if a.get("title", "") == item.get("title", "")),
-                    None,
-                )
-                item["url"] = match["url"] if match else url
-            safe.append(item)
-
-        return safe[:n]
+        return articles[:n]
 
     except anthropic.AuthenticationError:
-        st.error("❌ **Invalid Claude API key.** Check your key at https://console.anthropic.com")
+        st.error("❌ **Invalid Claude API key.** Please check your key — it should start with `sk-ant-`.")
         return []
     except anthropic.RateLimitError:
-        st.error("⏳ **Claude rate limit reached.** Wait a moment and retry.")
+        st.error("⏳ **Claude rate limit reached.** Wait a moment and try again.")
         return []
     except anthropic.APIError as e:
-        st.error(f"❌ Claude API error for **{category}**: {e}")
+        # Check if web_search tool is not available on this tier
+        err_str = str(e)
+        if "web_search" in err_str.lower() or "tool" in err_str.lower():
+            st.error(
+                f"❌ **Web search not available** on your Claude plan for **{category}**. "
+                "The `web_search` tool requires an Anthropic API account with tool access enabled. "
+                f"Details: {e}"
+            )
+        else:
+            st.error(f"❌ Claude API error for **{category}**: {e}")
         return []
-    except json.JSONDecodeError:
-        # If Claude still adds prose, try to extract the JSON array
-        m = re.search(r"\[.*\]", raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group())[:n]
-            except Exception:
-                pass
-        st.warning(f"⚠️ Could not parse Claude's curation for **{category}** — showing raw NewsAPI results.")
+    except json.JSONDecodeError as e:
+        st.warning(f"⚠️ Could not parse Claude's response for **{category}**: {e}")
         return []
     except Exception as e:
-        st.error(f"Unexpected Claude error for **{category}**: {e}")
+        st.error(f"❌ Unexpected error for **{category}**: {e}")
         return []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Fallback — build curated list directly from raw NewsAPI when Claude fails
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _build_fallback(articles: list[dict], category: str, n: int) -> list[dict]:
-    """Convert raw NewsAPI articles into the same shape as Claude's output."""
-    trusted_doms = TRUSTED_DOMAINS.get(category, [])
-    result = []
-    for a in articles[:n]:
-        source_name = (a.get("source") or {}).get("name", "Unknown")
-        url         = a.get("url", "")
-        is_trusted  = any(d in url.lower() for d in trusted_doms)
-        result.append({
-            "title":     a.get("title", ""),
-            "source":    source_name,
-            "published": a.get("publishedAt", ""),
-            "url":       url,
-            "summary":   (a.get("description") or "")[:240],
-            "trusted":   is_trusted,
-        })
-    return result
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Helpers — DataFrame & Excel
+#  Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 def articles_to_df(articles: list[dict], category: str) -> pd.DataFrame:
     rows = []
     for a in articles:
-        pub = a.get("published", "")
-        try:
-            dt      = datetime.strptime(pub[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-            pub_fmt = dt.strftime("%Y-%m-%d %H:%M UTC")
-        except Exception:
-            pub_fmt = pub
         rows.append({
             "Category":  category,
-            "Title":     a.get("title",   "N/A"),
-            "Source":    a.get("source",  "Unknown"),
-            "Published": pub_fmt,
-            "Summary":   a.get("summary", ""),
-            "URL":       a.get("url",     ""),
+            "Title":     a.get("title",     "N/A"),
+            "Source":    a.get("source",    "Unknown"),
+            "Published": a.get("published", ""),
+            "Summary":   a.get("summary",   ""),
+            "URL":       a.get("url",       ""),
             "Trusted":   "YES" if a.get("trusted", False) else "NO",
         })
     return pd.DataFrame(rows)
@@ -403,29 +321,33 @@ def df_to_excel(dfs: dict[str, pd.DataFrame]) -> bytes:
     return output.getvalue()
 
 
+def format_age(pub: str) -> str:
+    """Convert ISO timestamp to '2h 15m ago' style string."""
+    try:
+        dt  = datetime.strptime(pub[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        h   = int(age.total_seconds() // 3600)
+        m   = int((age.total_seconds() % 3600) // 60)
+        if h > 48:
+            return pub[:10]
+        return f"{h}h {m}m ago" if h else f"{m}m ago"
+    except Exception:
+        return pub[:10] if pub else "recent"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Sidebar
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### ⚙️ API Keys")
-    st.markdown(
-        '<span class="pill-news">NewsAPI</span>'
-        '<span class="pill-claude">✦ Claude</span>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### ⚙️ Configuration")
+    st.markdown('<span class="pill-claude">✦ Powered by Claude + Web Search</span>', unsafe_allow_html=True)
     st.markdown("")
 
-    news_api_key = st.text_input(
-        "NewsAPI Key",
-        type="password",
-        placeholder="Paste your NewsAPI key…",
-        help="Free at https://newsapi.org/register — 100 req/day",
-    )
     claude_api_key = st.text_input(
-        "Claude (Anthropic) API Key",
+        "Anthropic (Claude) API Key",
         type="password",
         placeholder="sk-ant-…",
-        help="Get yours at https://console.anthropic.com",
+        help="Get yours at https://console.anthropic.com — this is the only key needed.",
     )
 
     st.markdown("---")
@@ -435,7 +357,7 @@ with st.sidebar:
         "Select categories",
         options=all_cats,
         default=["Technology", "Finance & Markets", "AI & Machine Learning"],
-        format_func=lambda c: f"{CATEGORY_ICONS.get(c,'')} {c}",
+        format_func=lambda c: f"{CATEGORY_ICONS.get(c, '')} {c}",
     )
 
     st.markdown("---")
@@ -446,9 +368,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ℹ️ How it works")
     st.markdown("""
-1. **NewsAPI** fetches real articles published in the last **24 hours** with live URLs  
-2. **Claude** reads those real articles and selects the most important ones, adds summaries, and flags trusted sources  
-3. Results are displayed with **working links** and can be exported to **Excel**
+**One key. Real news.**
+
+Claude uses its built-in **web search** tool to find articles published in the last **24 hours**, returning real headlines, working URLs, real sources and editorial summaries — all via your single Claude API key.
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -457,31 +379,29 @@ with st.sidebar:
 st.markdown("""
 <div class="app-header">
     <h1>📰 24h News Explorer</h1>
-    <p>Real articles via NewsAPI &nbsp;·&nbsp; Curated by Claude &nbsp;·&nbsp; Working links &nbsp;·&nbsp; Export to Excel</p>
+    <p>Claude searches the live web &nbsp;·&nbsp; Real articles &nbsp;·&nbsp; Working links &nbsp;·&nbsp; Export to Excel</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Gate checks
 # ──────────────────────────────────────────────────────────────────────────────
-if not news_api_key or not claude_api_key:
-    missing = []
-    if not news_api_key:
-        missing.append("**NewsAPI key** — free at https://newsapi.org/register")
-    if not claude_api_key:
-        missing.append("**Claude API key** — free at https://console.anthropic.com")
-    st.info("👈 Please enter the following in the sidebar:\n\n" + "\n\n".join(f"• {m}" for m in missing))
+if not claude_api_key:
+    st.info(
+        "👈 Paste your **Anthropic API key** (`sk-ant-…`) in the sidebar.\n\n"
+        "Get one at https://console.anthropic.com — it's the **only key you need**."
+    )
     st.stop()
 
 if not selected_cats:
-    st.warning("⚠️ Select at least one category in the sidebar.")
+    st.warning("⚠️ Please select at least one category from the sidebar.")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Search
+#  Search button
 # ──────────────────────────────────────────────────────────────────────────────
 search_btn = st.button(
-    "🔍  Fetch & Curate Latest News  (last 24 h)",
+    "🔍  Search Latest News via Claude  (last 24 h)",
     use_container_width=True,
     type="primary",
 )
@@ -489,39 +409,28 @@ search_btn = st.button(
 if search_btn or st.session_state.get("last_results"):
 
     if search_btn:
-        all_data:     dict[str, pd.DataFrame] = {}
-        raw_curated:  dict[str, list[dict]]   = {}
+        all_data:    dict[str, pd.DataFrame] = {}
+        raw_articles: dict[str, list[dict]]  = {}
 
-        progress = st.progress(0, text="Starting…")
+        progress = st.progress(0, text="Starting web search…")
         status   = st.empty()
 
         for i, cat in enumerate(selected_cats):
             pct = (i + 1) / len(selected_cats)
+            icon = CATEGORY_ICONS.get(cat, "📌")
 
-            # ── Step 1: fetch real articles ───────────────
-            status.markdown(f"📡 **Fetching real articles** for *{cat}*…")
-            progress.progress(pct * 0.5, text=f"NewsAPI → {cat}")
-            raw = fetch_real_articles(cat, news_api_key, trusted_only)
+            status.markdown(f"🌐 **Claude is searching the web** for *{icon} {cat}* news…")
+            progress.progress(pct, text=f"Searching: {cat}…")
 
-            if not raw:
-                status.markdown(f"⚠️ No articles found for *{cat}* — skipping.")
-                continue
-
-            # ── Step 2: Claude curation ───────────────────
-            status.markdown(f"🤖 **Claude is curating** *{cat}* ({len(raw)} articles → top {max_per_cat})…")
-            progress.progress(pct * 0.5 + 0.5 * (1 / len(selected_cats)), text=f"Claude → {cat}")
-
-            curated = curate_with_claude(
-                cat, raw, claude_api_key, max_per_cat, TRUSTED_DOMAINS[cat]
+            articles = fetch_news_with_search(
+                category       = cat,
+                claude_api_key = claude_api_key,
+                n              = max_per_cat,
+                trusted_only   = trusted_only,
             )
 
-            # If Claude curation failed, fall back to raw NewsAPI results
-            if not curated:
-                status.markdown(f"⚠️ Claude curation failed for *{cat}* — using raw NewsAPI results.")
-                curated = _build_fallback(raw, cat, max_per_cat)
-
-            raw_curated[cat] = curated
-            df = articles_to_df(curated, cat)
+            raw_articles[cat] = articles
+            df = articles_to_df(articles, cat)
             if not df.empty:
                 all_data[cat] = df
 
@@ -529,11 +438,11 @@ if search_btn or st.session_state.get("last_results"):
         status.empty()
 
         st.session_state["last_results"] = all_data
-        st.session_state["last_raw"]     = raw_curated
+        st.session_state["last_raw"]     = raw_articles
 
-    # ── Restore session ───────────────────────────────────────────────────────
-    all_data    = st.session_state.get("last_results", {})
-    raw_curated = st.session_state.get("last_raw",     {})
+    # ── Restore from session ──────────────────────────────────────────────────
+    all_data     = st.session_state.get("last_results", {})
+    raw_articles = st.session_state.get("last_raw",     {})
 
     # ── Metrics ───────────────────────────────────────────────────────────────
     total      = sum(len(df) for df in all_data.values())
@@ -564,14 +473,14 @@ if search_btn or st.session_state.get("last_results"):
 
     # ── Article cards ─────────────────────────────────────────────────────────
     if not all_data:
-        st.warning("No articles found. Check your API keys or try different categories.")
+        st.warning("No articles found. Check your API key or try different categories.")
     else:
         for cat in selected_cats:
             if cat not in all_data or all_data[cat].empty:
                 continue
 
             icon     = CATEGORY_ICONS.get(cat, "📌")
-            articles = raw_curated.get(cat, [])
+            articles = raw_articles.get(cat, [])
 
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
@@ -583,21 +492,13 @@ if search_btn or st.session_state.get("last_results"):
                 summary = art.get("summary", "")
                 trusted = art.get("trusted", False)
 
-                # Format time-ago
-                try:
-                    dt      = datetime.strptime(pub[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-                    age     = datetime.now(timezone.utc) - dt
-                    h, m    = int(age.total_seconds()//3600), int((age.total_seconds()%3600)//60)
-                    age_str = f"{h}h {m}m ago" if h else f"{m}m ago"
-                except Exception:
-                    age_str = pub[:16].replace("T", " ") + " UTC" if pub else "recent"
-
+                age_str     = format_age(pub)
                 trust_cls   = "badge-trust-yes" if trusted else "badge-trust-no"
                 trust_label = "✅ Trusted"       if trusted else "⚠️ Unverified"
 
                 summary_html = (
                     f"<p style='color:#94a3b8;font-size:.85rem;margin:.6rem 0 .4rem 0'>"
-                    f"{summary[:240]}{'…' if len(summary)>240 else ''}</p>"
+                    f"{summary[:240]}{'…' if len(summary) > 240 else ''}</p>"
                 ) if summary else ""
 
                 st.markdown(f"""
