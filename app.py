@@ -144,54 +144,67 @@ st.markdown("""
     /* ── Summary / verify text ── */
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 
-    /* ── Slider → navy blue thumb + track ── */
+    /* ── Slider → navy blue thumb + track + value label ── */
+    /* thumb (BaseWeb) */
     [data-testid="stSlider"] [role="slider"] {
         background-color: #1a3a6e !important;
         border-color: #1a3a6e !important;
         box-shadow: 0 0 0 3px rgba(26,58,110,.2) !important;
+    }
+    [data-testid="stSlider"] div[role="slider"] {
+        background: #1a3a6e !important;
+        border: 2px solid #1a3a6e !important;
     }
     /* filled (left) portion of the slider track */
     [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:first-child,
     [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child > div {
         background-color: #1a3a6e !important;
     }
-    /* thumb dot */
-    [data-testid="stSlider"] div[role="slider"] {
-        background: #1a3a6e !important;
-        border: 2px solid #1a3a6e !important;
+    /* native range input (fallback) */
+    input[type="range"]::-webkit-slider-thumb {
+        background: #1a3a6e !important; border-color: #1a3a6e !important;
+    }
+    input[type="range"]::-moz-range-thumb {
+        background: #1a3a6e !important; border-color: #1a3a6e !important;
+    }
+    /* slider current-value number (shown above thumb) */
+    [data-testid="stSlider"] [data-testid="stTickBarMin"],
+    [data-testid="stSlider"] [data-testid="stTickBarMax"],
+    [data-testid="stSlider"] p,
+    [data-testid="stSlider"] span {
+        color: #1a3a6e !important;
+    }
+    /* the floating value label Streamlit renders above the thumb */
+    [data-testid="stSlider"] > div > div > div > div > div {
+        color: #1a3a6e !important;
+    }
+    /* Streamlit >=1.30 places the value in a <div class="css-..."> sibling of the track */
+    [data-testid="stSlider"] ~ div, 
+    [data-testid="stSlider"] + div {
+        color: #1a3a6e !important;
     }
 
-    /* ── Checkbox → navy blue ── */
-    [data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
-    [data-testid="stCheckbox"] label [data-testid="stWidgetLabel"] ~ div div {
-        background-color: #1a3a6e !important;
-        border-color: #1a3a6e !important;
+    /* ── Checkbox → navy blue box, normal label text ── */
+    /* Remove any highlight/selection colour from the label text */
+    [data-testid="stCheckbox"] label {
+        background: transparent !important;
+        color: #1a202c !important;
     }
-    /* BaseWeb checkbox checked state */
+    [data-testid="stCheckbox"] label span {
+        background: transparent !important;
+        color: #1a202c !important;
+    }
+    /* BaseWeb checkbox checked state – box colour */
     [data-baseweb="checkbox"] [data-checked="true"] div,
-    [data-baseweb="checkbox"] input:checked ~ div {
-        background-color: #1a3a6e !important;
-        border-color: #1a3a6e !important;
-    }
-    /* Streamlit internal SVG checkbox tick */
-    .stCheckbox > label > div[data-testid] svg { color: #1a3a6e !important; fill: #1a3a6e !important; }
-    /* catch-all: any red/primary accent in sidebar widgets */
+    [data-baseweb="checkbox"] input:checked ~ div,
+    [data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
     [data-testid="stSidebar"] [data-baseweb="checkbox"] > label > span:first-child {
         background-color: #1a3a6e !important;
         border-color: #1a3a6e !important;
         outline-color: #1a3a6e !important;
     }
-    [data-testid="stSidebar"] input[type="range"]::-webkit-slider-thumb {
-        background: #1a3a6e !important;
-        border-color: #1a3a6e !important;
-    }
-    [data-testid="stSidebar"] input[type="range"]::-moz-range-thumb {
-        background: #1a3a6e !important;
-        border-color: #1a3a6e !important;
-    }
-    [data-testid="stSidebar"] input[type="range"]::-webkit-slider-runnable-track {
-        background: linear-gradient(to right, #1a3a6e var(--val,50%), #d0d9e8 var(--val,50%)) !important;
-    }
+    /* SVG tick inside checkbox */
+    .stCheckbox > label > div[data-testid] svg { color: white !important; fill: white !important; }
 
     /* ── Multiselect tags → navy blue ── */
     [data-baseweb="tag"] { background-color: #1a3a6e !important; border-color: #1a3a6e !important; }
@@ -1008,10 +1021,23 @@ if search_btn or st.session_state.get("last_results"):
                     f"</div>"
                 ) if v_note and v_status != "skipped" else ""
 
-                # Source badge is now a clickable link to the article
+                # Sanitise URL: strip quotes and whitespace that break inline HTML
+                safe_url = url.strip().replace('"', '%22').replace("'", '%27')
+
+                # Source badge — clickable link
                 source_badge = (
-                    f"<a href='{url}' target='_blank' style='text-decoration:none;'>"
+                    f"<a href='{safe_url}' target='_blank' style='text-decoration:none;'>"
                     f"<span class='badge badge-source'>🗞️ {source} ↗</span></a>"
+                )
+
+                # Read-more link — clean button style, no raw URL exposed
+                read_link = (
+                    f"<a href='{safe_url}' target='_blank' "
+                    f"style='display:inline-block;margin-top:.5rem;font-size:.8rem;"
+                    f"color:#1a3a6e;font-weight:600;text-decoration:none;"
+                    f"border:1px solid #1a3a6e;border-radius:6px;"
+                    f"padding:.25rem .75rem;'>"
+                    f"🔗 Read full article →</a>"
                 )
 
                 st.markdown(f"""
@@ -1027,6 +1053,6 @@ if search_btn or st.session_state.get("last_results"):
                     {stale_html}
                     {summary_html}
                     {verify_note_html}
-                    <a href="{url}" target="_blank">🔗 Read full article →</a>
+                    {read_link}
                 </div>
                 """, unsafe_allow_html=True)
