@@ -2,8 +2,12 @@
 24h News Explorer
 ─────────────────
 Uses Claude with the built-in `web_search` tool (Anthropic API).
-Claude searches the live web for real news published in the last 24 hours,
-returns verified headlines, real URLs, real sources and editorial summaries.
+
+Two-pass pipeline:
+  Pass 1 – Claude searches the live web for real news (last 24 h).
+  Pass 2 – A second independent Claude call re-searches and verifies
+            every article before it is shown to the user.
+
 Only ONE API key needed: your Anthropic (Claude) key.
 """
 
@@ -31,22 +35,13 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* ── Global background ── */
-    .stApp {
-        background-color: #f0f2f6;
-    }
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        background-color: #f0f2f6;
-    }
+    .stApp { background-color: #f0f2f6; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; background-color: #f0f2f6; }
 
     /* ── App header ── */
     .app-header {
         background: linear-gradient(135deg, #0a1628 0%, #0d2150 50%, #1a3a6e 100%);
-        border-radius: 16px;
-        padding: 2rem 2.5rem;
-        margin-bottom: 2rem;
-        text-align: center;
+        border-radius: 16px; padding: 2rem 2.5rem; margin-bottom: 2rem; text-align: center;
     }
     .app-header h1 { color: #ffffff; font-size: 2.6rem; margin: 0; }
     .app-header p  { color: #b8c9e8; font-size: 1.05rem; margin-top: .5rem; }
@@ -54,12 +49,8 @@ st.markdown("""
     /* ── Metric cards ── */
     .metric-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
     .metric-card {
-        flex: 1;
-        background: #ffffff;
-        border: 1px solid #d0d9e8;
-        border-radius: 12px;
-        padding: 1rem 1.4rem;
-        text-align: center;
+        flex: 1; background: #ffffff; border: 1px solid #d0d9e8;
+        border-radius: 12px; padding: 1rem 1.4rem; text-align: center;
         box-shadow: 0 1px 4px rgba(0,0,0,.06);
     }
     .metric-card .value { font-size: 2rem; font-weight: 700; color: #1a3a6e; }
@@ -67,42 +58,60 @@ st.markdown("""
 
     /* ── News cards ── */
     .news-card {
-        background: #ffffff;
-        border: 1px solid #d0d9e8;
-        border-left: 4px solid #1a3a6e;
-        border-radius: 10px;
-        padding: 1rem 1.3rem;
-        margin-bottom: .9rem;
+        background: #ffffff; border: 1px solid #d0d9e8;
+        border-left: 4px solid #1a3a6e; border-radius: 10px;
+        padding: 1rem 1.3rem; margin-bottom: .9rem;
         box-shadow: 0 1px 4px rgba(0,0,0,.05);
     }
     .news-card:hover { border-left-color: #2e6db4; box-shadow: 0 3px 10px rgba(26,58,110,.12); }
+    .news-card.verified-high   { border-left-color: #16a34a; }
+    .news-card.verified-medium { border-left-color: #d97706; }
+    .news-card.verified-low    { border-left-color: #dc2626; }
+
     .news-card .headline {
-        color: #1a202c;
-        font-size: 1rem;
-        font-weight: 600;
-        line-height: 1.45;
-        margin: 0 0 .55rem 0;
+        color: #1a202c; font-size: 1rem; font-weight: 600;
+        line-height: 1.45; margin: 0 0 .55rem 0;
     }
     .news-card .meta { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 
     /* ── Badges ── */
     .badge { font-size: .72rem; padding: .2rem .6rem; border-radius: 20px; font-weight: 600; }
-    .badge-source   { background: #dbeafe; color: #1e40af; }
-    .badge-cat      { background: #e0e7ff; color: #3730a3; }
-    .badge-time     { background: #dcfce7; color: #166534; }
+    .badge-source    { background: #dbeafe; color: #1e40af; }
+    .badge-cat       { background: #e0e7ff; color: #3730a3; }
+    .badge-time      { background: #dcfce7; color: #166534; }
     .badge-trust-yes { background: #dcfce7; color: #166534; }
     .badge-trust-no  { background: #fef3c7; color: #92400e; }
+
+    /* ── Verification score badges ── */
+    .badge-verify-high   { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+    .badge-verify-medium { background: #fef9c3; color: #713f12; border: 1px solid #fde047; }
+    .badge-verify-low    { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+    .badge-verify-skip   { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+    /* ── Verification note box ── */
+    .verify-note {
+        font-size: .78rem; color: #475569; background: #f8fafc;
+        border: 1px solid #e2e8f0; border-radius: 6px;
+        padding: .4rem .7rem; margin: .5rem 0 .4rem 0;
+        font-style: italic;
+    }
+
+    /* ── Pass labels ── */
+    .pass-label {
+        display: inline-block; font-size: .68rem; font-weight: 700;
+        padding: .15rem .55rem; border-radius: 4px; letter-spacing: .04em;
+        margin-right: .4rem;
+    }
+    .pass-1 { background: #dbeafe; color: #1e40af; }
+    .pass-2 { background: #ede9fe; color: #4c1d95; }
+
     .news-card a { font-size: .8rem; color: #2563eb; text-decoration: none; }
     .news-card a:hover { text-decoration: underline; }
 
     /* ── Section titles ── */
     .section-title {
-        color: #1a3a6e;
-        font-size: 1.3rem;
-        font-weight: 700;
-        border-bottom: 2px solid #1a3a6e;
-        padding-bottom: .4rem;
-        margin-bottom: 1.2rem;
+        color: #1a3a6e; font-size: 1.3rem; font-weight: 700;
+        border-bottom: 2px solid #1a3a6e; padding-bottom: .4rem; margin-bottom: 1.2rem;
     }
 
     /* ── Sidebar ── */
@@ -112,20 +121,15 @@ st.markdown("""
     /* ── Download button ── */
     .stDownloadButton > button {
         background: linear-gradient(135deg, #1a3a6e, #2e6db4) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        padding: .55rem 1.2rem !important;
+        color: white !important; border: none !important; border-radius: 8px !important;
+        font-weight: 600 !important; padding: .55rem 1.2rem !important;
     }
     .stDownloadButton > button:hover { opacity: .85 !important; }
 
     /* ── Search / primary button ── */
     .stButton > button[kind="primary"] {
         background: linear-gradient(135deg, #1a3a6e, #2e6db4) !important;
-        border: none !important;
-        color: white !important;
-        font-weight: 700 !important;
+        border: none !important; color: white !important; font-weight: 700 !important;
     }
     .stButton > button[kind="primary"]:hover { opacity: .88 !important; }
 
@@ -133,41 +137,19 @@ st.markdown("""
     .pill-claude {
         display: inline-block;
         background: linear-gradient(135deg, #1a3a6e, #2e6db4);
-        color: white;
-        font-size: .7rem;
-        font-weight: 700;
-        padding: .2rem .8rem;
-        border-radius: 20px;
-        letter-spacing: .05em;
+        color: white; font-size: .7rem; font-weight: 700;
+        padding: .2rem .8rem; border-radius: 20px; letter-spacing: .05em;
     }
 
-    /* ── Summary text ── */
+    /* ── Summary / verify text ── */
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 
-    /* ── Multiselect tags / pills → navy blue ── */
-    /* selected tag background */
-    [data-baseweb="tag"] {
-        background-color: #1a3a6e !important;
-        border-color: #1a3a6e !important;
-    }
-    /* tag label text */
-    [data-baseweb="tag"] span[data-testid="stMultiSelectTag"] {
-        color: #ffffff !important;
-    }
-    /* ✕ close icon inside tag */
-    [data-baseweb="tag"] span[role="presentation"] svg {
-        fill: #ffffff !important;
-    }
-    /* tag container focus ring */
-    [data-baseweb="select"] [data-baseweb="tag"]:focus-within {
-        outline-color: #2e6db4 !important;
-    }
-    /* multiselect dropdown: selected-option checkmark / highlight */
-    [data-baseweb="menu"] [aria-selected="true"] {
-        background-color: #dbeafe !important;
-        color: #1a3a6e !important;
-    }
-    /* multiselect input focus border */
+    /* ── Multiselect tags → navy blue ── */
+    [data-baseweb="tag"] { background-color: #1a3a6e !important; border-color: #1a3a6e !important; }
+    [data-baseweb="tag"] span[data-testid="stMultiSelectTag"] { color: #ffffff !important; }
+    [data-baseweb="tag"] span[role="presentation"] svg { fill: #ffffff !important; }
+    [data-baseweb="select"] [data-baseweb="tag"]:focus-within { outline-color: #2e6db4 !important; }
+    [data-baseweb="menu"] [aria-selected="true"] { background-color: #dbeafe !important; color: #1a3a6e !important; }
     [data-baseweb="select"] > div:focus-within {
         border-color: #2e6db4 !important;
         box-shadow: 0 0 0 2px rgba(46,109,180,.25) !important;
@@ -176,7 +158,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Constants  –  new finance / Asia-APAC-SEA focused categories
+#  Constants
 # ──────────────────────────────────────────────────────────────────────────────
 CATEGORY_ICONS: dict[str, str] = {
     "Stocks":              "📈",
@@ -192,7 +174,6 @@ CATEGORY_ICONS: dict[str, str] = {
     "Entertainment":       "🎬",
 }
 
-# ── Trusted sources per category ─────────────────────────────────────────────
 TRUSTED_SOURCES: dict[str, list[str]] = {
     "Stocks": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
@@ -253,45 +234,20 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
     ],
 }
 
-# ── Search queries – global for Stocks/Fiats, Asia/APAC/SEA for the rest ─────
 CATEGORY_SEARCH_QUERIES: dict[str, str] = {
-    "Stocks": (
-        "global stock market equities news today Asia APAC"
-    ),
-    "Fiats": (
-        "forex currency exchange rates USD EUR JPY SGD AUD news today"
-    ),
-    "Indexes": (
-        "stock market index STI Nikkei Hang Seng ASX S&P 500 MSCI Asia news today"
-    ),
-    "Regional": (
-        "Asia APAC Southeast Asia SEA Singapore economy finance news today"
-    ),
-    "Country Credit": (
-        "sovereign credit rating Asia APAC Singapore bonds debt news today"
-    ),
-    "Alternative Lending": (
-        "alternative lending P2P crowdfunding credit Asia Singapore fintech news today"
-    ),
-    "Fintech": (
-        "fintech financial technology Singapore Asia APAC payments digital banking news today"
-    ),
-    "Start-up": (
-        "startup funding venture capital Asia Singapore APAC SEA news today"
-    ),
-    "Sustainable Finance": (
-        "sustainable finance ESG green bonds Singapore Asia APAC news today"
-    ),
-    "Marketing": (
-        "marketing advertising brand campaigns Asia Singapore APAC SEA news today"
-    ),
-    "Entertainment": (
-        "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today"
-    ),
+    "Stocks":              "global stock market equities news today Asia APAC",
+    "Fiats":               "forex currency exchange rates USD EUR JPY SGD AUD news today",
+    "Indexes":             "stock market index STI Nikkei Hang Seng ASX S&P 500 MSCI Asia news today",
+    "Regional":            "Asia APAC Southeast Asia SEA Singapore economy finance news today",
+    "Country Credit":      "sovereign credit rating Asia APAC Singapore bonds debt news today",
+    "Alternative Lending": "alternative lending P2P crowdfunding credit Asia Singapore fintech news today",
+    "Fintech":             "fintech financial technology Singapore Asia APAC payments digital banking news today",
+    "Start-up":            "startup funding venture capital Asia Singapore APAC SEA news today",
+    "Sustainable Finance": "sustainable finance ESG green bonds Singapore Asia APAC news today",
+    "Marketing":           "marketing advertising brand campaigns Asia Singapore APAC SEA news today",
+    "Entertainment":       "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today",
 }
 
-# ── Geo-context injected into the Claude prompt for each category ─────────────
-# For Stocks and Fiats the focus is global; for all others we add Asia/SEA context.
 CATEGORY_GEO_FOCUS: dict[str, str] = {
     "Stocks": (
         "Coverage should be global (US, Europe, Asia), with special attention to "
@@ -351,8 +307,14 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
 
 CLAUDE_MODEL = "claude-opus-4-5"
 
+# Verification confidence thresholds
+VERIFY_HIGH   = 75   # score ≥ 75  → confirmed ✅
+VERIFY_MEDIUM = 45   # score ≥ 45  → partially confirmed ⚠️
+               # score  < 45  → unconfirmed ❌
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-#  Core: ask Claude to web-search and return structured news
+#  PASS 1 – Search
 # ──────────────────────────────────────────────────────────────────────────────
 
 def fetch_news_with_search(
@@ -362,15 +324,13 @@ def fetch_news_with_search(
     trusted_only: bool,
 ) -> list[dict]:
     """
-    Ask Claude to search the live web for the latest news in `category`.
-    Claude uses the built-in web_search tool, then returns a JSON array
-    of real articles with verified URLs.
+    Pass 1: Ask Claude to search the live web for the latest news in `category`.
+    Returns a raw list of article dicts (title, source, published, url, summary, trusted).
     """
-    today        = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
-    search_query = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
-    geo_focus    = CATEGORY_GEO_FOCUS.get(category, "")
-
+    today       = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    trusted_str = ", ".join(TRUSTED_SOURCES.get(category, []))
+    search_q    = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
+    geo_focus   = CATEGORY_GEO_FOCUS.get(category, "")
     source_rule = (
         f"ONLY include articles from these trusted sources: {trusted_str}."
         if trusted_only
@@ -381,7 +341,7 @@ def fetch_news_with_search(
 
 Use the web_search tool to find the {n} most important news stories about **{category}** published in the last 24 hours.
 
-Search query to use: "{search_query}"
+Search query to use: "{search_q}"
 
 Geographic / editorial focus:
 {geo_focus}
@@ -399,24 +359,83 @@ Each item must have these fields:
 
 Rules:
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
-- Apply the geographic/editorial focus strictly — only include stories relevant to that scope.
+- Apply the geographic/editorial focus strictly.
 - If you find fewer than {n} articles, return however many you found.
+- Do NOT wrap in markdown code fences — return the raw JSON array only.
+"""
+    return _run_claude_search(prompt, category, claude_api_key, n)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PASS 2 – Verify
+# ──────────────────────────────────────────────────────────────────────────────
+
+def verify_articles(
+    articles: list[dict],
+    category: str,
+    claude_api_key: str,
+) -> list[dict]:
+    """
+    Pass 2: A second independent Claude call re-searches the web to cross-check
+    every article from Pass 1.
+
+    For each article it returns:
+      "verified_score"  : int 0-100  (confidence the story is real & accurate)
+      "verified_status" : "confirmed" | "partial" | "unconfirmed"
+      "verified_note"   : short explanation of what the verification found
+      "corrected_summary": optionally improved summary (or same as original)
+
+    Articles that cannot be confirmed at all are flagged but still returned
+    so the user can decide whether to trust them.
+    """
+    if not articles:
+        return articles
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Build a compact list for the prompt
+    articles_json = json.dumps(
+        [{"idx": i, "title": a.get("title",""), "source": a.get("source",""),
+          "url": a.get("url",""), "summary": a.get("summary","")}
+         for i, a in enumerate(articles)],
+        ensure_ascii=False, indent=2
+    )
+
+    prompt = f"""Today is {today}. You are an independent fact-checking editor for the **{category}** category.
+
+You have been given a list of news articles found by a colleague. Your job is to verify each one
+independently using your web_search tool — do NOT simply trust the data you were given.
+
+Articles to verify:
+{articles_json}
+
+For EACH article (identified by its "idx"):
+1. Search the web to confirm the story is real and was published in the last 48 hours.
+2. Check whether the title, source and key facts in the summary are accurate.
+3. Assign a confidence score (0–100):
+   - 75-100 : Story confirmed by independent search — facts check out
+   - 45-74  : Story partially confirmed — found related coverage but details differ slightly
+   - 0-44   : Story NOT confirmed — could not find independent evidence, or facts appear wrong
+
+Return ONLY a raw JSON array (no markdown) with exactly {len(articles)} objects, one per article,
+in the same order, with these fields:
+  "idx"              : same integer index as input (int)
+  "verified_score"   : confidence score 0-100 (int)
+  "verified_status"  : "confirmed" | "partial" | "unconfirmed" (string)
+  "verified_note"    : 1-2 sentences explaining what your independent search found (string)
+  "corrected_summary": improved or confirmed summary — keep original if accurate (string)
+
+Rules:
+- Use web_search for EVERY article — do not guess.
+- Be strict: a score ≥ 75 means you found independent corroboration.
 - Do NOT wrap in markdown code fences — return the raw JSON array only.
 """
 
     try:
         client = anthropic.Anthropic(api_key=claude_api_key)
-
-        tools = [
-            {
-                "type": "web_search_20250305",
-                "name": "web_search",
-            }
-        ]
-
+        tools  = [{"type": "web_search_20250305", "name": "web_search"}]
         messages = [{"role": "user", "content": prompt}]
 
-        # Agentic loop: keep going until Claude stops using tools
         while True:
             response = client.messages.create(
                 model=CLAUDE_MODEL,
@@ -424,72 +443,138 @@ Rules:
                 tools=tools,
                 messages=messages,
             )
-
             if response.stop_reason == "end_turn":
                 break
-
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
-
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": "Search completed.",
-                        })
-
+                tool_results = [
+                    {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
+                    for b in response.content if b.type == "tool_use"
+                ]
                 if tool_results:
                     messages.append({"role": "user", "content": tool_results})
                 continue
-
             break
 
-        # Extract text from the final response
-        raw = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                raw += block.text
-
-        raw = raw.strip()
-
-        # Strip accidental markdown fences
+        raw = "".join(getattr(b, "text", "") for b in response.content).strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
         raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
         raw = raw.strip()
 
-        # Extract JSON array
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:
-            st.warning(f"⚠️ Claude did not return a JSON array for **{category}**.")
+            # Verification failed — return articles with a "skip" flag
+            return _mark_verify_skipped(articles, "Verifier returned no JSON")
+
+        verifications = json.loads(match.group())
+        if not isinstance(verifications, list):
+            return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
+
+        # Merge verification results back into article dicts
+        verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
+        enriched = []
+        for i, art in enumerate(articles):
+            v = verify_map.get(i, {})
+            score  = int(v.get("verified_score",  0))
+            status = v.get("verified_status", "unconfirmed")
+            note   = v.get("verified_note",   "No verification note returned.")
+            cor_s  = v.get("corrected_summary", art.get("summary", ""))
+
+            art = dict(art)   # copy so we don't mutate original
+            art["verified_score"]   = score
+            art["verified_status"]  = status
+            art["verified_note"]    = note
+            # Use corrected summary if verifier improved it
+            if cor_s and cor_s != art.get("summary", ""):
+                art["summary"] = cor_s
+            enriched.append(art)
+
+        return enriched
+
+    except anthropic.RateLimitError:
+        st.warning("⏳ Rate limit hit during verification — articles shown without Pass 2 check.")
+        return _mark_verify_skipped(articles, "Rate limit reached during verification")
+    except Exception as e:
+        st.warning(f"⚠️ Verification pass failed ({e}) — showing unverified articles.")
+        return _mark_verify_skipped(articles, f"Verification error: {e}")
+
+
+def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
+    """Attach a 'skipped' verification marker to every article."""
+    out = []
+    for art in articles:
+        art = dict(art)
+        art["verified_score"]  = -1
+        art["verified_status"] = "skipped"
+        art["verified_note"]   = reason
+        out.append(art)
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Shared Claude agentic-loop helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _run_claude_search(
+    prompt: str,
+    category: str,
+    claude_api_key: str,
+    n: int,
+) -> list[dict]:
+    """Run a Claude web-search agentic loop and parse the JSON array response."""
+    try:
+        client   = anthropic.Anthropic(api_key=claude_api_key)
+        tools    = [{"type": "web_search_20250305", "name": "web_search"}]
+        messages = [{"role": "user", "content": prompt}]
+
+        while True:
+            response = client.messages.create(
+                model=CLAUDE_MODEL, max_tokens=4096,
+                tools=tools, messages=messages,
+            )
+            if response.stop_reason == "end_turn":
+                break
+            if response.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = [
+                    {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
+                    for b in response.content if b.type == "tool_use"
+                ]
+                if tool_results:
+                    messages.append({"role": "user", "content": tool_results})
+                continue
+            break
+
+        raw = "".join(getattr(b, "text", "") for b in response.content).strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+        raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
+        raw = raw.strip()
+
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            st.warning(f"⚠️ Claude returned no JSON array for **{category}**.")
             return []
 
         articles = json.loads(match.group())
         if not isinstance(articles, list):
             raise ValueError("Expected JSON array")
-
         return articles[:n]
 
     except anthropic.AuthenticationError:
-        st.error("❌ **Invalid Claude API key.** Please check your key — it should start with `sk-ant-`.")
+        st.error("❌ **Invalid Claude API key.** It should start with `sk-ant-`.")
         return []
     except anthropic.RateLimitError:
         st.error("⏳ **Claude rate limit reached.** Wait a moment and try again.")
         return []
     except anthropic.APIError as e:
-        err_str = str(e)
-        if "web_search" in err_str.lower() or "tool" in err_str.lower():
-            st.error(
-                f"❌ **Web search not available** on your Claude plan for **{category}**. "
-                "The `web_search` tool requires an Anthropic API account with tool access enabled. "
-                f"Details: {e}"
-            )
+        err = str(e)
+        if "web_search" in err.lower() or "tool" in err.lower():
+            st.error(f"❌ Web search unavailable for **{category}**: {e}")
         else:
             st.error(f"❌ Claude API error for **{category}**: {e}")
         return []
     except json.JSONDecodeError as e:
-        st.warning(f"⚠️ Could not parse Claude's response for **{category}**: {e}")
+        st.warning(f"⚠️ Could not parse response for **{category}**: {e}")
         return []
     except Exception as e:
         st.error(f"❌ Unexpected error for **{category}**: {e}")
@@ -500,17 +585,34 @@ Rules:
 #  Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
+def verify_css_class(score: int, status: str) -> tuple[str, str, str]:
+    """
+    Returns (card_extra_class, badge_class, badge_label) based on
+    the verification score / status.
+    """
+    if status == "skipped" or score < 0:
+        return "", "badge-verify-skip", "🔘 Not verified"
+    if score >= VERIFY_HIGH:
+        return "verified-high",   "badge-verify-high",   f"✅ Confirmed ({score}%)"
+    if score >= VERIFY_MEDIUM:
+        return "verified-medium", "badge-verify-medium", f"⚠️ Partial ({score}%)"
+    return "verified-low", "badge-verify-low", f"❌ Unconfirmed ({score}%)"
+
+
 def articles_to_df(articles: list[dict], category: str) -> pd.DataFrame:
     rows = []
     for a in articles:
         rows.append({
-            "Category":  category,
-            "Title":     a.get("title",     "N/A"),
-            "Source":    a.get("source",    "Unknown"),
-            "Published": a.get("published", ""),
-            "Summary":   a.get("summary",   ""),
-            "URL":       a.get("url",       ""),
-            "Trusted":   "YES" if a.get("trusted", False) else "NO",
+            "Category":          category,
+            "Title":             a.get("title",          "N/A"),
+            "Source":            a.get("source",         "Unknown"),
+            "Published":         a.get("published",      ""),
+            "Summary":           a.get("summary",        ""),
+            "URL":               a.get("url",            ""),
+            "Trusted":           "YES" if a.get("trusted", False) else "NO",
+            "Verify Score":      a.get("verified_score",  ""),
+            "Verify Status":     a.get("verified_status", ""),
+            "Verify Note":       a.get("verified_note",   ""),
         })
     return pd.DataFrame(rows)
 
@@ -532,7 +634,6 @@ def df_to_excel(dfs: dict[str, pd.DataFrame]) -> bytes:
 
 
 def format_age(pub: str) -> str:
-    """Convert ISO timestamp to '2h 15m ago' style string."""
     try:
         dt  = datetime.strptime(pub[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
         age = datetime.now(timezone.utc) - dt
@@ -577,13 +678,21 @@ with st.sidebar:
     trusted_only = st.checkbox("Trusted sources only", value=True)
 
     st.markdown("---")
-    st.markdown("### ℹ️ How it works")
+    st.markdown("### 🔬 How verification works")
     st.markdown("""
-**One key. Real news.**
+**Two-pass pipeline:**
 
-Claude uses its built-in **web search** tool to find articles published in the last **24 hours**, returning real headlines, working URLs, real sources and editorial summaries — all via your single Claude API key.
+**Pass 1 · Search** — Claude searches the live web and finds the latest news for each category.
 
-*Non-Stocks/Fiats categories are focused on **Asia · APAC · SEA** news.*
+**Pass 2 · Verify** — A second independent Claude call re-searches the web to cross-check every article:
+- Confirms the story is real and recent
+- Checks headline & key facts
+- Scores confidence **0 – 100**:
+  - 🟢 **≥ 75** Confirmed
+  - 🟡 **45–74** Partially confirmed
+  - 🔴 **< 45** Unconfirmed
+
+*Non-Stocks/Fiats categories focus on **Asia · APAC · SEA**.*
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -592,7 +701,15 @@ Claude uses its built-in **web search** tool to find articles published in the l
 st.markdown("""
 <div class="app-header">
     <h1>📰 24h News Explorer</h1>
-    <p>Claude searches the live web &nbsp;·&nbsp; Real articles &nbsp;·&nbsp; Working links &nbsp;·&nbsp; Asia · APAC · SEA focus &nbsp;·&nbsp; Export to Excel</p>
+    <p>
+        <span style="opacity:.8">Pass 1: Claude searches the web</span>
+        &nbsp;·&nbsp;
+        <span style="opacity:.8">Pass 2: Independent verification</span>
+        &nbsp;·&nbsp;
+        Asia · APAC · SEA focus
+        &nbsp;·&nbsp;
+        Export to Excel
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -614,7 +731,7 @@ if not selected_cats:
 #  Search button
 # ──────────────────────────────────────────────────────────────────────────────
 search_btn = st.button(
-    "🔍  Search Latest News via Claude  (last 24 h)",
+    "🔍  Search & Verify Latest News via Claude  (last 24 h)",
     use_container_width=True,
     type="primary",
 )
@@ -622,24 +739,54 @@ search_btn = st.button(
 if search_btn or st.session_state.get("last_results"):
 
     if search_btn:
-        all_data:    dict[str, pd.DataFrame] = {}
-        raw_articles: dict[str, list[dict]]  = {}
+        all_data:     dict[str, pd.DataFrame] = {}
+        raw_articles: dict[str, list[dict]]   = {}
 
-        progress = st.progress(0, text="Starting web search…")
+        total_cats = len(selected_cats)
+
+        # ── progress UI ───────────────────────────────────────────────────────
+        # Each category has 2 sub-steps (search + verify) → total steps = cats × 2
+        progress = st.progress(0, text="Starting…")
         status   = st.empty()
 
         for i, cat in enumerate(selected_cats):
-            pct  = (i + 1) / len(selected_cats)
             icon = CATEGORY_ICONS.get(cat, "📌")
+            base_pct = i / total_cats   # fraction at start of this category
 
-            status.markdown(f"🌐 **Claude is searching the web** for *{icon} {cat}* news…")
-            progress.progress(pct, text=f"Searching: {cat}…")
+            # ── PASS 1: Search ────────────────────────────────────────────────
+            status.markdown(
+                f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
+                f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
+                unsafe_allow_html=True,
+            )
+            progress.progress(
+                base_pct + 0.0 / total_cats,
+                text=f"Pass 1 – Searching: {cat}…",
+            )
 
             articles = fetch_news_with_search(
                 category       = cat,
                 claude_api_key = claude_api_key,
                 n              = max_per_cat,
                 trusted_only   = trusted_only,
+            )
+
+            # ── PASS 2: Verify ────────────────────────────────────────────────
+            if articles:
+                status.markdown(
+                    f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
+                    f'🔬 Cross-checking <b>{len(articles)}</b> articles in <b>{icon} {cat}</b>…',
+                    unsafe_allow_html=True,
+                )
+                progress.progress(
+                    base_pct + 0.5 / total_cats,
+                    text=f"Pass 2 – Verifying: {cat}…",
+                )
+                articles = verify_articles(articles, cat, claude_api_key)
+
+            progress.progress(
+                (i + 1) / total_cats,
+                text=f"Done: {cat}",
             )
 
             raw_articles[cat] = articles
@@ -662,12 +809,35 @@ if search_btn or st.session_state.get("last_results"):
     trusted_n  = sum((df["Trusted"] == "YES").sum() for df in all_data.values()) if all_data else 0
     cats_found = len(all_data)
 
+    # Count confirmed articles (score >= VERIFY_HIGH)
+    confirmed_n = 0
+    for arts in raw_articles.values():
+        for a in arts:
+            if a.get("verified_score", -1) >= VERIFY_HIGH:
+                confirmed_n += 1
+
     st.markdown(f"""
     <div class="metric-row">
-        <div class="metric-card"><div class="value">{total}</div><div class="label">Total Articles</div></div>
-        <div class="metric-card"><div class="value">{trusted_n}</div><div class="label">Trusted Sources</div></div>
-        <div class="metric-card"><div class="value">{cats_found}</div><div class="label">Categories</div></div>
-        <div class="metric-card"><div class="value">24h</div><div class="label">Time Window</div></div>
+        <div class="metric-card">
+            <div class="value">{total}</div>
+            <div class="label">Total Articles</div>
+        </div>
+        <div class="metric-card">
+            <div class="value">{trusted_n}</div>
+            <div class="label">Trusted Sources</div>
+        </div>
+        <div class="metric-card">
+            <div class="value" style="color:#16a34a">{confirmed_n}</div>
+            <div class="label">✅ Verified (Pass 2)</div>
+        </div>
+        <div class="metric-card">
+            <div class="value">{cats_found}</div>
+            <div class="label">Categories</div>
+        </div>
+        <div class="metric-card">
+            <div class="value">24h</div>
+            <div class="label">Time Window</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -698,32 +868,45 @@ if search_btn or st.session_state.get("last_results"):
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
             for art in articles:
-                title   = art.get("title",     "No title")
-                source  = art.get("source",    "Unknown")
-                url     = art.get("url",       "#")
-                pub     = art.get("published", "")
-                summary = art.get("summary",   "")
-                trusted = art.get("trusted",   False)
+                title   = art.get("title",          "No title")
+                source  = art.get("source",         "Unknown")
+                url     = art.get("url",            "#")
+                pub     = art.get("published",      "")
+                summary = art.get("summary",        "")
+                trusted = art.get("trusted",        False)
+                v_score  = art.get("verified_score",  -1)
+                v_status = art.get("verified_status", "skipped")
+                v_note   = art.get("verified_note",   "")
 
-                age_str     = format_age(pub)
-                trust_cls   = "badge-trust-yes" if trusted else "badge-trust-no"
-                trust_label = "✅ Trusted"       if trusted else "⚠️ Unverified"
+                age_str    = format_age(pub)
+                trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
+                trust_lbl  = "✅ Trusted"       if trusted else "⚠️ Unverified"
+
+                card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status)
 
                 summary_html = (
                     f"<p class='summary-text'>"
-                    f"{summary[:240]}{'…' if len(summary) > 240 else ''}</p>"
+                    f"{summary[:280]}{'…' if len(summary) > 280 else ''}</p>"
                 ) if summary else ""
 
+                verify_note_html = (
+                    f"<div class='verify-note'>"
+                    f"<span class='pass-label pass-2'>PASS 2 · VERIFY</span> {v_note}"
+                    f"</div>"
+                ) if v_note and v_status != "skipped" else ""
+
                 st.markdown(f"""
-                <div class="news-card">
+                <div class="news-card {card_cls}">
                     <p class="headline">{title}</p>
                     <div class="meta">
                         <span class="badge badge-source">🗞️ {source}</span>
                         <span class="badge badge-cat">{icon} {cat}</span>
                         <span class="badge badge-time">🕐 {age_str}</span>
-                        <span class="badge {trust_cls}">{trust_label}</span>
+                        <span class="badge {trust_cls}">{trust_lbl}</span>
+                        <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
                     </div>
                     {summary_html}
+                    {verify_note_html}
                     <a href="{url}" target="_blank">🔗 Read full article →</a>
                 </div>
                 """, unsafe_allow_html=True)
