@@ -392,13 +392,23 @@ def fetch_news_with_search(
     cutoff_str  = cutoff_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
-    search_q     = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
+    base_query   = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
     geo_focus    = CATEGORY_GEO_FOCUS.get(category, "")
     kw_list      = keywords if keywords else []
-    keyword_line = (
-        f"\nKeyword focus — prioritise stories that mention any of these: {', '.join(kw_list)}."
-        if kw_list else ""
-    )
+
+    # Build the search query: append each keyword as an OR alternative so Claude
+    # searches for ANY of them rather than expecting all to appear together.
+    if kw_list:
+        kw_or        = " OR ".join(f'"{k}"' for k in kw_list)
+        search_q     = f"{base_query} ({kw_or})"
+        keyword_line = (
+            "\nKeyword rule — include a story if it mentions AT LEAST ONE of these "
+            f"keywords (not all of them): {', '.join(kw_list)}. "
+            "Run separate searches per keyword when needed to find matching articles."
+        )
+    else:
+        search_q     = base_query
+        keyword_line = ""
     source_rule = (
         f"ONLY include articles from these trusted sources: {trusted_str}."
         if trusted_only
