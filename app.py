@@ -348,7 +348,8 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
     ),
 }
 
-CLAUDE_MODEL = "claude-opus-4-5"
+SEARCH_MODEL = "claude-haiku-4-5-20251001"   # Pass 1 — web search (cheap, fast)
+VERIFY_MODEL = "claude-haiku-4-5-20251001"   # Pass 2 — reasoning only (no web search)
 
 # Verification confidence thresholds
 VERIFY_HIGH   = 75   # score ≥ 75  → confirmed ✅
@@ -448,17 +449,15 @@ def verify_articles(
     claude_api_key: str,
 ) -> list[dict]:
     """
-    Pass 2: A second independent Claude call re-searches the web to cross-check
-    every article from Pass 1.
+    Pass 2: A lightweight reasoning-only call (no web search) that evaluates
+    each article from Pass 1 on source reputation, headline plausibility,
+    summary coherence, and recency.
 
     For each article it returns:
-      "verified_score"  : int 0-100  (confidence the story is real & accurate)
+      "verified_score"  : int 0-100  (confidence the story is credible)
       "verified_status" : "confirmed" | "partial" | "unconfirmed"
-      "verified_note"   : short explanation of what the verification found
+      "verified_note"   : short explanation of the assessment
       "corrected_summary": optionally improved summary (or same as original)
-
-    Articles that cannot be confirmed at all are flagged but still returned
-    so the user can decide whether to trust them.
     """
     if not articles:
         return articles
@@ -473,34 +472,34 @@ def verify_articles(
         ensure_ascii=False, indent=2
     )
 
-    prompt = f"""Today is {today}. You are an independent fact-checking editor for the **{category}** category.
+    prompt = f"""Today is {today}. You are a fact-checking editor for the **{category}** category.
 
-You have been given a list of news articles found by a colleague. Your job is to verify each one
-independently using your web_search tool — do NOT simply trust the data you were given.
+Evaluate each article below using ONLY your internal knowledge and reasoning.
+Do NOT hallucinate — if you are unsure about a source or claim, score conservatively.
 
-Articles to verify:
+Articles:
 {articles_json}
 
-For EACH article (identified by its "idx"):
-1. Search the web to confirm the story is real and was published in the last 48 hours.
-2. Check whether the title, source and key facts in the summary are accurate.
-3. Assign a confidence score (0–100):
-   - 75-100 : Story confirmed by independent search — facts check out
-   - 45-74  : Story partially confirmed — found related coverage but details differ slightly
-   - 0-44   : Story NOT confirmed — could not find independent evidence, or facts appear wrong
+For EACH article (by "idx"), evaluate these four signals:
+1. **Source reputation**: Is the source a well-known, credible outlet for {category}?
+   (Major wire services & established outlets → high; unknown or blog-like → low)
+2. **Headline plausibility**: Does the title describe a realistic, specific event?
+   (Concrete facts → high; vague clickbait or sensationalism → low)
+3. **Summary coherence**: Are the summary details internally consistent and specific?
+   (Named entities, dates, figures → high; generic filler → low)
+4. **Recency**: Does the published date fall within the last 48 hours?
 
-Return ONLY a raw JSON array (no markdown) with exactly {len(articles)} objects, one per article,
-in the same order, with these fields:
-  "idx"              : same integer index as input (int)
-  "verified_score"   : confidence score 0-100 (int)
-  "verified_status"  : "confirmed" | "partial" | "unconfirmed" (string)
-  "verified_note"    : 1-2 sentences explaining what your independent search found (string)
-  "corrected_summary": improved or confirmed summary — keep original if accurate (string)
+Scoring guide:
+  75-100  Reputable source + plausible headline + coherent summary + recent
+  45-74   Minor concerns on one signal (e.g. lesser-known source but plausible story)
+  0-44    Unknown source, implausible claims, or inconsistent details
 
-Rules:
-- Use web_search for EVERY article — do not guess.
-- Be strict: a score ≥ 75 means you found independent corroboration.
-- Do NOT wrap in markdown code fences — return the raw JSON array only.
+Return ONLY a raw JSON array (no markdown fences) with exactly {len(articles)} objects:
+  "idx"              : int — same index as input
+  "verified_score"   : int 0-100
+  "verified_status"  : "confirmed" | "partial" | "unconfirmed"
+  "verified_note"    : 1-2 sentences explaining your reasoning
+  "corrected_summary": improved summary, or the original if accurate
 """
 
     delays = [5, 15]
@@ -508,7 +507,11 @@ Rules:
         if delay:
             time.sleep(delay)
         try:
-            raw           = _run_claude_agentic_loop(prompt, claude_api_key)
+            raw           = _run_claude_agentic_loop(
+                prompt, claude_api_key,
+                model=VERIFY_MODEL,
+                tools=None,            # no web search — pure reasoning
+            )
             verifications = _extract_json_array(raw)
 
             if verifications is None:
@@ -558,24 +561,29 @@ def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
 #  Shared Claude agentic-loop helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _run_claude_agentic_loop(prompt: str, claude_api_key: str) -> str:
+def _run_claude_agentic_loop(
+    prompt: str,
+    claude_api_key: str,
+    model: str = SEARCH_MODEL,
+    tools: list[dict] | None = None,
+) -> str:
     """
-    Execute a single Claude agentic loop with the web_search tool.
+    Execute a Claude call — agentic (with tools) or single-turn (without).
     Returns the concatenated text of the final assistant message.
     Raises anthropic exceptions on API errors (callers handle them).
     """
     client   = anthropic.Anthropic(api_key=claude_api_key)
-    tools    = [{"type": "web_search_20250305", "name": "web_search"}]
     messages = [{"role": "user", "content": prompt}]
 
+    kwargs: dict = dict(model=model, max_tokens=4096, messages=messages)
+    if tools:
+        kwargs["tools"] = tools
+
     while True:
-        response = client.messages.create(
-            model=CLAUDE_MODEL, max_tokens=4096,
-            tools=tools, messages=messages,
-        )
+        response = client.messages.create(**kwargs)
         if response.stop_reason == "end_turn":
             break
-        if response.stop_reason == "tool_use":
+        if response.stop_reason == "tool_use" and tools:
             messages.append({"role": "assistant", "content": response.content})
             tool_results = [
                 {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
@@ -614,7 +622,11 @@ def _run_claude_search(
         if delay:
             time.sleep(delay)
         try:
-            raw      = _run_claude_agentic_loop(prompt, claude_api_key)
+            raw      = _run_claude_agentic_loop(
+                prompt, claude_api_key,
+                model=SEARCH_MODEL,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            )
             articles = _extract_json_array(raw)
 
             if articles is None:
