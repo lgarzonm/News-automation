@@ -144,76 +144,63 @@ st.markdown("""
     /* ── Summary / verify text ── */
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 
-    /* ── Slider → navy blue thumb + track + value label ── */
-    /* Thumb */
-    [data-testid="stSlider"] [role="slider"],
-    [data-testid="stSlider"] div[role="slider"] {
-        background-color: #1a3a6e !important;
-        border: 2px solid #1a3a6e !important;
-        box-shadow: 0 0 0 3px rgba(26,58,110,.2) !important;
-    }
-    /* Filled (left) portion of the slider track — covers the red dot at min */
+    /* ── Slider — primary colour handled by config.toml; ── */
+    /* belt-and-braces: ensure the filled track is navy, no red dot at min  */
     [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:first-child,
-    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child > div,
     [data-testid="stSlider"] [data-baseweb="slider"] > div > div > div > div:first-child {
         background-color: #1a3a6e !important;
-        min-width: 0 !important;
+        min-width: 0 !important;   /* collapses the dot when at minimum */
     }
-    /* Unfilled (right) portion — keep it light grey */
     [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:last-child {
-        background-color: #d0d9e8 !important;
+        background-color: #d0d9e8 !important;  /* unfilled portion */
     }
-    /* Tick bar min/max labels — text only, no rogue coloured dot */
+    /* Suppress any stray coloured element inside the tick bars */
     [data-testid="stSlider"] [data-testid="stTickBarMin"],
-    [data-testid="stSlider"] [data-testid="stTickBarMax"] {
-        color: #1a3a6e !important;
-        background: transparent !important;
-    }
+    [data-testid="stSlider"] [data-testid="stTickBarMax"],
     [data-testid="stSlider"] [data-testid="stTickBarMin"] *,
     [data-testid="stSlider"] [data-testid="stTickBarMax"] * {
         background: transparent !important;
         color: #1a3a6e !important;
-        fill: #1a3a6e !important;
     }
-    /* Value label text (above thumb and sibling divs) */
-    [data-testid="stSlider"] p,
-    [data-testid="stSlider"] span,
-    [data-testid="stSlider"] > div > div > div > div > div,
-    [data-testid="stSlider"] ~ div,
-    [data-testid="stSlider"] + div {
-        color: #1a3a6e !important;
-    }
-    /* Native range input fallback */
-    input[type="range"]::-webkit-slider-thumb { background: #1a3a6e !important; }
-    input[type="range"]::-moz-range-thumb    { background: #1a3a6e !important; }
 
-    /* ── Checkbox → navy box + always-readable label (no highlight) ── */
+    /* ── Checkbox label — remove every kind of highlight ── */
+    /* Target every node that could carry a background in the label area   */
+    [data-testid="stCheckbox"],
+    [data-testid="stCheckbox"] > div,
     [data-testid="stCheckbox"] label,
     [data-testid="stCheckbox"] label *,
-    [data-testid="stCheckbox"] [data-baseweb="checkbox"] > label > span:last-child {
-        background: transparent !important;
+    [data-testid="stCheckbox"] p,
+    [data-testid="stCheckbox"] span {
+        background:       transparent !important;
         background-color: transparent !important;
         color: #1a202c !important;
         -webkit-text-fill-color: #1a202c !important;
     }
-    /* Keep label readable on hover / focus-within */
+    /* Same for every interactive state */
+    [data-testid="stCheckbox"]:hover,
+    [data-testid="stCheckbox"]:hover *,
+    [data-testid="stCheckbox"]:focus-within,
+    [data-testid="stCheckbox"]:focus-within *,
     [data-testid="stCheckbox"] label:hover,
     [data-testid="stCheckbox"] label:focus-within,
-    [data-testid="stCheckbox"] [data-baseweb="checkbox"]:hover > label > span:last-child,
-    [data-testid="stCheckbox"] [data-baseweb="checkbox"]:focus-within > label > span:last-child {
-        background: transparent !important;
+    [data-testid="stCheckbox"] label:focus-within * {
+        background:       transparent !important;
+        background-color: transparent !important;
         color: #1a202c !important;
     }
-    /* Checked state — navy box */
-    [data-baseweb="checkbox"] [data-checked="true"] div,
-    [data-baseweb="checkbox"] input:checked ~ div,
-    [data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
-    [data-testid="stSidebar"] [data-baseweb="checkbox"] > label > span:first-child {
-        background-color: #1a3a6e !important;
-        border-color: #1a3a6e !important;
-        outline-color: #1a3a6e !important;
+    /* text ::selection inside checkbox labels */
+    [data-testid="stCheckbox"] label::selection,
+    [data-testid="stCheckbox"] label *::selection {
+        background: transparent !important;
     }
-    /* SVG tick inside checkbox */
+    /* Checked-state box colour (config.toml covers the primary colour,
+       but keep the explicit override as a fallback)                        */
+    [data-testid="stCheckbox"] [data-baseweb="checkbox"] [role="checkbox"],
+    [data-baseweb="checkbox"] [data-checked="true"] div,
+    [data-baseweb="checkbox"] input:checked ~ div {
+        background-color: #1a3a6e !important;
+        border-color:     #1a3a6e !important;
+    }
     .stCheckbox > label > div[data-testid] svg { color: white !important; fill: white !important; }
 
     /* ── Multiselect tags → navy blue ── */
