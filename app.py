@@ -691,6 +691,11 @@ def df_to_excel(dfs: dict[str, pd.DataFrame]) -> bytes:
     return output.getvalue()
 
 
+def strip_html_tags(text: str) -> str:
+    """Remove any HTML tags from a string (e.g. tags Claude accidentally returns)."""
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
 def format_age(pub: str) -> str:
     """Return a human-readable age string, always in SGT context."""
     try:
@@ -935,7 +940,23 @@ if search_btn or st.session_state.get("last_results"):
         st.warning("No articles found. Check your API key or try different categories.")
     else:
         for cat in selected_cats:
+            icon = CATEGORY_ICONS.get(cat, "📌")
             if cat not in all_data or all_data[cat].empty:
+                st.markdown(
+                    f'<div class="section-title">{icon} {cat}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<div style='background:#fef3c7;border:1px solid #fde68a;"
+                    "border-left:4px solid #d97706;border-radius:8px;"
+                    "padding:.8rem 1.1rem;margin-bottom:1rem;color:#78350f;'>"
+                    "⏳ <b>No articles retrieved for this category.</b> "
+                    "This is usually caused by a temporary API rate limit. "
+                    "Wait a moment and search again — or reduce the number of "
+                    "categories selected at once."
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
                 continue
 
             icon     = CATEGORY_ICONS.get(cat, "📌")
@@ -970,10 +991,11 @@ if search_btn or st.session_state.get("last_results"):
                         f"published {pub[:10]}</div>"
                     )
 
+                clean_summary = strip_html_tags(summary)
                 summary_html = (
                     f"<p class='summary-text'>"
-                    f"{summary[:280]}{'…' if len(summary) > 280 else ''}</p>"
-                ) if summary else ""
+                    f"{clean_summary[:280]}{'…' if len(clean_summary) > 280 else ''}</p>"
+                ) if clean_summary else ""
 
                 verify_note_html = (
                     f"<div class='verify-note'>"
