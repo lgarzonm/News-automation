@@ -1,0 +1,9 @@
+[theme]
+# Primary accent colour — drives the slider fill, thumb, checkbox box,
+# focus rings, and any other component that uses the Streamlit primary colour.
+# Setting it here is the only reliable way to override Streamlit internals.
+primaryColor            = "#1a3a6e"
+backgroundColor         = "#f0f2f6"
+secondaryBackgroundColor = "#eef1f7"
+textColor               = "#1a202c"
+font                    = "sans serif"
