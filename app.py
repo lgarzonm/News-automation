@@ -163,45 +163,28 @@ st.markdown("""
         color: #1a3a6e !important;
     }
 
-    /* ── Checkbox label — remove every kind of highlight ── */
-    /* Target every node that could carry a background in the label area   */
-    [data-testid="stCheckbox"],
-    [data-testid="stCheckbox"] > div,
-    [data-testid="stCheckbox"] label,
-    [data-testid="stCheckbox"] label *,
-    [data-testid="stCheckbox"] p,
-    [data-testid="stCheckbox"] span {
-        background:       transparent !important;
+    /* ── Checkbox ── */
+    /*
+     * ROOT CAUSE: BaseWeb applies primaryColor as a background to the
+     * <label> wrapper when the checkbox is checked/hovered. With a dark
+     * navy primaryColor the entire row goes dark. Fix: force the label
+     * wrapper to be ALWAYS transparent. The small checkbox box itself
+     * gets its colour from config.toml primaryColor — we don't touch it.
+     */
+    [data-baseweb="checkbox"] label,
+    [data-baseweb="checkbox"] label:hover,
+    [data-baseweb="checkbox"] label:active,
+    [data-baseweb="checkbox"] label:focus,
+    [data-baseweb="checkbox"] label:focus-visible {
         background-color: transparent !important;
+        background:       transparent !important;
+    }
+    /* Label text — always dark and readable regardless of check state */
+    [data-testid="stCheckbox"] p,
+    [data-testid="stCheckbox"] span:not([data-baseweb]) {
         color: #1a202c !important;
         -webkit-text-fill-color: #1a202c !important;
     }
-    /* Same for every interactive state */
-    [data-testid="stCheckbox"]:hover,
-    [data-testid="stCheckbox"]:hover *,
-    [data-testid="stCheckbox"]:focus-within,
-    [data-testid="stCheckbox"]:focus-within *,
-    [data-testid="stCheckbox"] label:hover,
-    [data-testid="stCheckbox"] label:focus-within,
-    [data-testid="stCheckbox"] label:focus-within * {
-        background:       transparent !important;
-        background-color: transparent !important;
-        color: #1a202c !important;
-    }
-    /* text ::selection inside checkbox labels */
-    [data-testid="stCheckbox"] label::selection,
-    [data-testid="stCheckbox"] label *::selection {
-        background: transparent !important;
-    }
-    /* Checked-state box colour (config.toml covers the primary colour,
-       but keep the explicit override as a fallback)                        */
-    [data-testid="stCheckbox"] [data-baseweb="checkbox"] [role="checkbox"],
-    [data-baseweb="checkbox"] [data-checked="true"] div,
-    [data-baseweb="checkbox"] input:checked ~ div {
-        background-color: #1a3a6e !important;
-        border-color:     #1a3a6e !important;
-    }
-    .stCheckbox > label > div[data-testid] svg { color: white !important; fill: white !important; }
 
     /* ── Multiselect tags → navy blue ── */
     [data-baseweb="tag"] { background-color: #1a3a6e !important; border-color: #1a3a6e !important; }
