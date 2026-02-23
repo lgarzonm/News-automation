@@ -291,6 +291,13 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Entertainment":       "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today",
 }
 
+CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
+    "Indexes":             ["SPY", "NASDAQ", "Dow", "Straits Times Index Singapore", "Nikkei"],
+    "Fiats":               ["DXY", "rupee", "Singapore dollar"],
+    "Sustainable Finance": ["green bonds", "ESG", "green finance", "climate finance"],
+    "Stocks":              ["earnings"],
+}
+
 CATEGORY_GEO_FOCUS: dict[str, str] = {
     "Stocks": (
         "Coverage should be global (US, Europe, Asia), with special attention to "
@@ -370,6 +377,7 @@ def fetch_news_with_search(
     claude_api_key: str,
     n: int,
     trusted_only: bool,
+    keywords: list[str] | None = None,
 ) -> list[dict]:
     """
     Pass 1: Ask Claude to search the live web for the latest news in `category`.
@@ -383,9 +391,14 @@ def fetch_news_with_search(
     cutoff_utc  = datetime.now(timezone.utc) - timedelta(hours=24)
     cutoff_str  = cutoff_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    trusted_str = ", ".join(TRUSTED_SOURCES.get(category, []))
-    search_q    = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
-    geo_focus   = CATEGORY_GEO_FOCUS.get(category, "")
+    trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
+    search_q     = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
+    geo_focus    = CATEGORY_GEO_FOCUS.get(category, "")
+    kw_list      = keywords if keywords else []
+    keyword_line = (
+        f"\nKeyword focus — prioritise stories that mention any of these: {', '.join(kw_list)}."
+        if kw_list else ""
+    )
     source_rule = (
         f"ONLY include articles from these trusted sources: {trusted_str}."
         if trusted_only
@@ -411,7 +424,7 @@ def fetch_news_with_search(
 Use the web_search tool to find the {n} most important news stories about **{category}**
 that were published STRICTLY AFTER {cutoff_str} (i.e. within the last 24 hours only).
 
-Search query to use: "{search_q}"
+Search query to use: "{search_q}"{keyword_line}
 
 Geographic / editorial focus:
 {geo_focus}
@@ -779,6 +792,24 @@ with st.sidebar:
         key="category_multiselect",
     )
 
+    # ── Per-category keyword inputs ───────────────────────────────────────────
+    if selected_cats:
+        st.markdown("---")
+        st.markdown("### 🏷️ Keywords")
+        st.caption("Pre-filled per category — edit or clear as needed.")
+        category_keywords: dict[str, list[str]] = {}
+        for cat in selected_cats:
+            defaults = CATEGORY_DEFAULT_KEYWORDS.get(cat, [])
+            raw = st.text_input(
+                f"{CATEGORY_ICONS.get(cat, '')} {cat}",
+                value=", ".join(defaults),
+                key=f"kw_{cat}",
+                placeholder="keyword1, keyword2, …",
+            )
+            category_keywords[cat] = [k.strip() for k in raw.split(",") if k.strip()]
+    else:
+        category_keywords = {}
+
     st.markdown("---")
     st.markdown("### 🔍 Options")
     max_per_cat  = st.slider("Articles per category", 1, 10, 5)
@@ -890,6 +921,7 @@ if search_btn or st.session_state.get("last_results"):
                 claude_api_key = claude_api_key,
                 n              = max_per_cat,
                 trusted_only   = trusted_only,
+                keywords       = category_keywords.get(cat, []),
             )
 
             # ── PASS 2: Verify ────────────────────────────────────────────────
