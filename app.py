@@ -528,10 +528,8 @@ Rules:
         return enriched
 
     except anthropic.RateLimitError:
-        st.warning("⏳ Rate limit hit during verification — articles shown without Pass 2 check.")
         return _mark_verify_skipped(articles, "Rate limit reached during verification")
     except Exception as e:
-        st.warning(f"⚠️ Verification pass failed ({e}) — showing unverified articles.")
         return _mark_verify_skipped(articles, f"Verification error: {e}")
 
 
@@ -615,7 +613,6 @@ def _run_claude_search(
         st.error("❌ **Invalid Claude API key.** It should start with `sk-ant-`.")
         return []
     except anthropic.RateLimitError:
-        st.error("⏳ **Claude rate limit reached.** Wait a moment and try again.")
         return []
     except anthropic.APIError as e:
         err = str(e)
