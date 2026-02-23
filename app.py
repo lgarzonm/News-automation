@@ -844,9 +844,23 @@ if search_btn or st.session_state.get("last_results"):
         progress = st.progress(0, text="Starting…")
         status   = st.empty()
 
+        # Inter-category pause: space out API calls to stay under rate limits.
+        # With 12 categories × 2 passes = 24 calls, a 6 s gap between categories
+        # keeps the request rate well below the per-minute API threshold.
+        INTER_CAT_PAUSE   = 6   # seconds between categories
+        INTER_PASS_PAUSE  = 3   # seconds between Pass 1 → Pass 2 within a category
+
         for i, cat in enumerate(selected_cats):
             icon = CATEGORY_ICONS.get(cat, "📌")
             base_pct = i / total_cats   # fraction at start of this category
+
+            # Pause before every category except the first
+            if i > 0:
+                status.markdown(
+                    f"⏱️ Pausing {INTER_CAT_PAUSE}s before next category…",
+                    unsafe_allow_html=True,
+                )
+                time.sleep(INTER_CAT_PAUSE)
 
             # ── PASS 1: Search ────────────────────────────────────────────────
             status.markdown(
@@ -868,6 +882,7 @@ if search_btn or st.session_state.get("last_results"):
 
             # ── PASS 2: Verify ────────────────────────────────────────────────
             if articles:
+                time.sleep(INTER_PASS_PAUSE)   # brief gap between Pass 1 and Pass 2
                 status.markdown(
                     f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
                     f'🔬 Cross-checking <b>{len(articles)}</b> articles in <b>{icon} {cat}</b>…',
