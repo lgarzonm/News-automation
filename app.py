@@ -145,56 +145,66 @@ st.markdown("""
     .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
 
     /* ── Slider → navy blue thumb + track + value label ── */
-    /* thumb (BaseWeb) */
-    [data-testid="stSlider"] [role="slider"] {
+    /* Thumb */
+    [data-testid="stSlider"] [role="slider"],
+    [data-testid="stSlider"] div[role="slider"] {
         background-color: #1a3a6e !important;
-        border-color: #1a3a6e !important;
+        border: 2px solid #1a3a6e !important;
         box-shadow: 0 0 0 3px rgba(26,58,110,.2) !important;
     }
-    [data-testid="stSlider"] div[role="slider"] {
-        background: #1a3a6e !important;
-        border: 2px solid #1a3a6e !important;
-    }
-    /* filled (left) portion of the slider track */
+    /* Filled (left) portion of the slider track — covers the red dot at min */
     [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:first-child,
-    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child > div {
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child > div,
+    [data-testid="stSlider"] [data-baseweb="slider"] > div > div > div > div:first-child {
         background-color: #1a3a6e !important;
+        min-width: 0 !important;
     }
-    /* native range input (fallback) */
-    input[type="range"]::-webkit-slider-thumb {
-        background: #1a3a6e !important; border-color: #1a3a6e !important;
+    /* Unfilled (right) portion — keep it light grey */
+    [data-testid="stSlider"] [data-baseweb="slider"] [class*="Track"] > div:last-child {
+        background-color: #d0d9e8 !important;
     }
-    input[type="range"]::-moz-range-thumb {
-        background: #1a3a6e !important; border-color: #1a3a6e !important;
-    }
-    /* slider current-value number (shown above thumb) */
+    /* Tick bar min/max labels — text only, no rogue coloured dot */
     [data-testid="stSlider"] [data-testid="stTickBarMin"],
-    [data-testid="stSlider"] [data-testid="stTickBarMax"],
+    [data-testid="stSlider"] [data-testid="stTickBarMax"] {
+        color: #1a3a6e !important;
+        background: transparent !important;
+    }
+    [data-testid="stSlider"] [data-testid="stTickBarMin"] *,
+    [data-testid="stSlider"] [data-testid="stTickBarMax"] * {
+        background: transparent !important;
+        color: #1a3a6e !important;
+        fill: #1a3a6e !important;
+    }
+    /* Value label text (above thumb and sibling divs) */
     [data-testid="stSlider"] p,
-    [data-testid="stSlider"] span {
-        color: #1a3a6e !important;
-    }
-    /* the floating value label Streamlit renders above the thumb */
-    [data-testid="stSlider"] > div > div > div > div > div {
-        color: #1a3a6e !important;
-    }
-    /* Streamlit >=1.30 places the value in a <div class="css-..."> sibling of the track */
-    [data-testid="stSlider"] ~ div, 
+    [data-testid="stSlider"] span,
+    [data-testid="stSlider"] > div > div > div > div > div,
+    [data-testid="stSlider"] ~ div,
     [data-testid="stSlider"] + div {
         color: #1a3a6e !important;
     }
+    /* Native range input fallback */
+    input[type="range"]::-webkit-slider-thumb { background: #1a3a6e !important; }
+    input[type="range"]::-moz-range-thumb    { background: #1a3a6e !important; }
 
-    /* ── Checkbox → navy blue box, normal label text ── */
-    /* Remove any highlight/selection colour from the label text */
-    [data-testid="stCheckbox"] label {
+    /* ── Checkbox → navy box + always-readable label (no highlight) ── */
+    [data-testid="stCheckbox"] label,
+    [data-testid="stCheckbox"] label *,
+    [data-testid="stCheckbox"] [data-baseweb="checkbox"] > label > span:last-child {
+        background: transparent !important;
+        background-color: transparent !important;
+        color: #1a202c !important;
+        -webkit-text-fill-color: #1a202c !important;
+    }
+    /* Keep label readable on hover / focus-within */
+    [data-testid="stCheckbox"] label:hover,
+    [data-testid="stCheckbox"] label:focus-within,
+    [data-testid="stCheckbox"] [data-baseweb="checkbox"]:hover > label > span:last-child,
+    [data-testid="stCheckbox"] [data-baseweb="checkbox"]:focus-within > label > span:last-child {
         background: transparent !important;
         color: #1a202c !important;
     }
-    [data-testid="stCheckbox"] label span {
-        background: transparent !important;
-        color: #1a202c !important;
-    }
-    /* BaseWeb checkbox checked state – box colour */
+    /* Checked state — navy box */
     [data-baseweb="checkbox"] [data-checked="true"] div,
     [data-baseweb="checkbox"] input:checked ~ div,
     [data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
@@ -523,59 +533,24 @@ Rules:
 """
 
     try:
-        client = anthropic.Anthropic(api_key=claude_api_key)
-        tools  = [{"type": "web_search_20250305", "name": "web_search"}]
-        messages = [{"role": "user", "content": prompt}]
+        raw           = _run_claude_agentic_loop(prompt, claude_api_key)
+        verifications = _extract_json_array(raw)
 
-        while True:
-            response = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=4096,
-                tools=tools,
-                messages=messages,
-            )
-            if response.stop_reason == "end_turn":
-                break
-            if response.stop_reason == "tool_use":
-                messages.append({"role": "assistant", "content": response.content})
-                tool_results = [
-                    {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
-                    for b in response.content if b.type == "tool_use"
-                ]
-                if tool_results:
-                    messages.append({"role": "user", "content": tool_results})
-                continue
-            break
-
-        raw = "".join(getattr(b, "text", "") for b in response.content).strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-        raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
-        raw = raw.strip()
-
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            # Verification failed — return articles with a "skip" flag
+        if verifications is None:
             return _mark_verify_skipped(articles, "Verifier returned no JSON")
-
-        verifications = json.loads(match.group())
         if not isinstance(verifications, list):
             return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
 
         # Merge verification results back into article dicts
         verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
-        enriched = []
+        enriched   = []
         for i, art in enumerate(articles):
-            v = verify_map.get(i, {})
-            score  = int(v.get("verified_score",  0))
-            status = v.get("verified_status", "unconfirmed")
-            note   = v.get("verified_note",   "No verification note returned.")
-            cor_s  = v.get("corrected_summary", art.get("summary", ""))
-
-            art = dict(art)   # copy so we don't mutate original
-            art["verified_score"]   = score
-            art["verified_status"]  = status
-            art["verified_note"]    = note
-            # Use corrected summary if verifier improved it
+            v     = verify_map.get(i, {})
+            cor_s = v.get("corrected_summary", "")
+            art   = dict(art)   # copy so we don't mutate original
+            art["verified_score"]  = int(v.get("verified_score",  0))
+            art["verified_status"] = v.get("verified_status", "unconfirmed")
+            art["verified_note"]   = v.get("verified_note",   "No verification note returned.")
             if cor_s and cor_s != art.get("summary", ""):
                 art["summary"] = cor_s
             enriched.append(art)
@@ -603,8 +578,50 @@ def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Shared Claude agentic-loop helper
+#  Shared Claude agentic-loop helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _run_claude_agentic_loop(prompt: str, claude_api_key: str) -> str:
+    """
+    Execute a single Claude agentic loop with the web_search tool.
+    Returns the concatenated text of the final assistant message.
+    Raises anthropic exceptions on API errors (callers handle them).
+    """
+    client   = anthropic.Anthropic(api_key=claude_api_key)
+    tools    = [{"type": "web_search_20250305", "name": "web_search"}]
+    messages = [{"role": "user", "content": prompt}]
+
+    while True:
+        response = client.messages.create(
+            model=CLAUDE_MODEL, max_tokens=4096,
+            tools=tools, messages=messages,
+        )
+        if response.stop_reason == "end_turn":
+            break
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
+                for b in response.content if b.type == "tool_use"
+            ]
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+            continue
+        break
+
+    return "".join(getattr(b, "text", "") for b in response.content).strip()
+
+
+def _extract_json_array(raw: str) -> list | None:
+    """Strip markdown fences and extract the first JSON array from text.
+    Returns the parsed list, or None if no array was found."""
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE).strip()
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    if not match:
+        return None
+    return json.loads(match.group())
+
 
 def _run_claude_search(
     prompt: str,
@@ -614,39 +631,12 @@ def _run_claude_search(
 ) -> list[dict]:
     """Run a Claude web-search agentic loop and parse the JSON array response."""
     try:
-        client   = anthropic.Anthropic(api_key=claude_api_key)
-        tools    = [{"type": "web_search_20250305", "name": "web_search"}]
-        messages = [{"role": "user", "content": prompt}]
+        raw      = _run_claude_agentic_loop(prompt, claude_api_key)
+        articles = _extract_json_array(raw)
 
-        while True:
-            response = client.messages.create(
-                model=CLAUDE_MODEL, max_tokens=4096,
-                tools=tools, messages=messages,
-            )
-            if response.stop_reason == "end_turn":
-                break
-            if response.stop_reason == "tool_use":
-                messages.append({"role": "assistant", "content": response.content})
-                tool_results = [
-                    {"type": "tool_result", "tool_use_id": b.id, "content": "Search completed."}
-                    for b in response.content if b.type == "tool_use"
-                ]
-                if tool_results:
-                    messages.append({"role": "user", "content": tool_results})
-                continue
-            break
-
-        raw = "".join(getattr(b, "text", "") for b in response.content).strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-        raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE)
-        raw = raw.strip()
-
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
+        if articles is None:
             st.warning(f"⚠️ Claude returned no JSON array for **{category}**.")
             return []
-
-        articles = json.loads(match.group())
         if not isinstance(articles, list):
             raise ValueError("Expected JSON array")
         return articles[:n]
@@ -698,21 +688,21 @@ def verify_css_class(score: int, status: str, trusted_only: bool = False) -> tup
 
 
 def articles_to_df(articles: list[dict], category: str) -> pd.DataFrame:
-    rows = []
-    for a in articles:
-        rows.append({
-            "Category":          category,
-            "Title":             a.get("title",          "N/A"),
-            "Source":            a.get("source",         "Unknown"),
-            "Published":         a.get("published",      ""),
-            "Summary":           a.get("summary",        ""),
-            "URL":               a.get("url",            ""),
-            "Trusted":           "YES" if a.get("trusted", False) else "NO",
-            "Verify Score":      a.get("verified_score",  ""),
-            "Verify Status":     a.get("verified_status", ""),
-            "Verify Note":       a.get("verified_note",   ""),
-        })
-    return pd.DataFrame(rows)
+    return pd.DataFrame([
+        {
+            "Category":      category,
+            "Title":         a.get("title",           "N/A"),
+            "Source":        a.get("source",          "Unknown"),
+            "Published":     a.get("published",       ""),
+            "Summary":       a.get("summary",         ""),
+            "URL":           a.get("url",             ""),
+            "Trusted":       "YES" if a.get("trusted", False) else "NO",
+            "Verify Score":  a.get("verified_score",  ""),
+            "Verify Status": a.get("verified_status", ""),
+            "Verify Note":   a.get("verified_note",   ""),
+        }
+        for a in articles
+    ])
 
 
 def df_to_excel(dfs: dict[str, pd.DataFrame]) -> bytes:
