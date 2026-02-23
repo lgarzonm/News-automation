@@ -13,6 +13,7 @@ Only ONE API key needed: your Anthropic (Claude) key.
 
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
@@ -502,35 +503,43 @@ Rules:
 - Do NOT wrap in markdown code fences — return the raw JSON array only.
 """
 
-    try:
-        raw           = _run_claude_agentic_loop(prompt, claude_api_key)
-        verifications = _extract_json_array(raw)
+    delays = [5, 15]
+    for attempt, delay in enumerate([0] + delays):
+        if delay:
+            time.sleep(delay)
+        try:
+            raw           = _run_claude_agentic_loop(prompt, claude_api_key)
+            verifications = _extract_json_array(raw)
 
-        if verifications is None:
-            return _mark_verify_skipped(articles, "Verifier returned no JSON")
-        if not isinstance(verifications, list):
-            return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
+            if verifications is None:
+                return _mark_verify_skipped(articles, "Verifier returned no JSON")
+            if not isinstance(verifications, list):
+                return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
 
-        # Merge verification results back into article dicts
-        verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
-        enriched   = []
-        for i, art in enumerate(articles):
-            v     = verify_map.get(i, {})
-            cor_s = v.get("corrected_summary", "")
-            art   = dict(art)   # copy so we don't mutate original
-            art["verified_score"]  = int(v.get("verified_score",  0))
-            art["verified_status"] = v.get("verified_status", "unconfirmed")
-            art["verified_note"]   = v.get("verified_note",   "No verification note returned.")
-            if cor_s and cor_s != art.get("summary", ""):
-                art["summary"] = cor_s
-            enriched.append(art)
+            # Merge verification results back into article dicts
+            verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
+            enriched   = []
+            for i, art in enumerate(articles):
+                v     = verify_map.get(i, {})
+                cor_s = v.get("corrected_summary", "")
+                art   = dict(art)   # copy so we don't mutate original
+                art["verified_score"]  = int(v.get("verified_score",  0))
+                art["verified_status"] = v.get("verified_status", "unconfirmed")
+                art["verified_note"]   = v.get("verified_note",   "No verification note returned.")
+                if cor_s and cor_s != art.get("summary", ""):
+                    art["summary"] = cor_s
+                enriched.append(art)
 
-        return enriched
+            return enriched
 
-    except anthropic.RateLimitError:
-        return _mark_verify_skipped(articles, "Rate limit reached during verification")
-    except Exception as e:
-        return _mark_verify_skipped(articles, f"Verification error: {e}")
+        except anthropic.RateLimitError:
+            if attempt < len(delays):
+                continue
+            return _mark_verify_skipped(articles, "Rate limit reached during verification")
+        except Exception as e:
+            return _mark_verify_skipped(articles, f"Verification error: {e}")
+
+    return _mark_verify_skipped(articles, "Rate limit reached during verification")
 
 
 def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
@@ -597,36 +606,44 @@ def _run_claude_search(
     claude_api_key: str,
     n: int,
 ) -> list[dict]:
-    """Run a Claude web-search agentic loop and parse the JSON array response."""
-    try:
-        raw      = _run_claude_agentic_loop(prompt, claude_api_key)
-        articles = _extract_json_array(raw)
+    """Run a Claude web-search agentic loop and parse the JSON array response.
+    Retries up to 3 times with exponential backoff on rate-limit errors."""
+    delays = [5, 15, 30]   # seconds to wait before each retry attempt
 
-        if articles is None:
-            st.warning(f"⚠️ Claude returned no JSON array for **{category}**.")
+    for attempt, delay in enumerate([0] + delays):
+        if delay:
+            time.sleep(delay)
+        try:
+            raw      = _run_claude_agentic_loop(prompt, claude_api_key)
+            articles = _extract_json_array(raw)
+
+            if articles is None:
+                return []
+            if not isinstance(articles, list):
+                raise ValueError("Expected JSON array")
+            return articles[:n]
+
+        except anthropic.AuthenticationError:
+            st.error("❌ **Invalid Claude API key.** It should start with `sk-ant-`.")
             return []
-        if not isinstance(articles, list):
-            raise ValueError("Expected JSON array")
-        return articles[:n]
+        except anthropic.RateLimitError:
+            if attempt < len(delays):
+                continue   # wait and retry
+            return []      # all retries exhausted
+        except anthropic.APIError as e:
+            err = str(e)
+            if "web_search" in err.lower() or "tool" in err.lower():
+                st.error(f"❌ Web search unavailable for **{category}**: {e}")
+            else:
+                st.error(f"❌ Claude API error for **{category}**: {e}")
+            return []
+        except json.JSONDecodeError:
+            return []
+        except Exception as e:
+            st.error(f"❌ Unexpected error for **{category}**: {e}")
+            return []
 
-    except anthropic.AuthenticationError:
-        st.error("❌ **Invalid Claude API key.** It should start with `sk-ant-`.")
-        return []
-    except anthropic.RateLimitError:
-        return []
-    except anthropic.APIError as e:
-        err = str(e)
-        if "web_search" in err.lower() or "tool" in err.lower():
-            st.error(f"❌ Web search unavailable for **{category}**: {e}")
-        else:
-            st.error(f"❌ Claude API error for **{category}**: {e}")
-        return []
-    except json.JSONDecodeError as e:
-        st.warning(f"⚠️ Could not parse response for **{category}**: {e}")
-        return []
-    except Exception as e:
-        st.error(f"❌ Unexpected error for **{category}**: {e}")
-        return []
+    return []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
