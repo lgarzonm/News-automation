@@ -26,7 +26,6 @@ from slide_generator import (
     generate_all_slides,
     generate_category_slide,
     generate_article_slide,
-    SlideFormat,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1033,33 +1032,19 @@ if search_btn or st.session_state.get("last_results"):
             unsafe_allow_html=True,
         )
         st.caption(
-            "Generate branded slides from the news above — ready to post on "
-            "Instagram, LinkedIn, or Stories."
+            "Generate branded slides for TikTok photo carousels (1080 × 1350 px)."
         )
 
-        col_fmt, col_mode = st.columns(2)
-        with col_fmt:
-            slide_format: SlideFormat = st.selectbox(
-                "Slide format",
-                options=["instagram", "story", "linkedin"],
-                format_func=lambda f: {
-                    "instagram": "📸 Instagram (1080×1080)",
-                    "story":     "📱 Story (1080×1920)",
-                    "linkedin":  "💼 LinkedIn (1200×627)",
-                }[f],
-                key="slide_format",
-            )
-        with col_mode:
-            slide_mode = st.selectbox(
-                "Slide content",
-                options=["summary", "individual", "both"],
-                format_func=lambda m: {
-                    "summary":    "📋 Category summaries (cover + per-category)",
-                    "individual": "📰 One slide per article",
-                    "both":       "📦 All slides (summaries + individual)",
-                }[m],
-                key="slide_mode",
-            )
+        slide_mode = st.selectbox(
+            "Slide content",
+            options=["summary", "individual", "both"],
+            format_func=lambda m: {
+                "summary":    "📋 Category summaries (cover + per-category)",
+                "individual": "📰 One slide per article",
+                "both":       "📦 All slides (summaries + individual)",
+            }[m],
+            key="slide_mode",
+        )
 
         generate_btn = st.button(
             "🎨  Generate Social Media Slides",
@@ -1072,9 +1057,8 @@ if search_btn or st.session_state.get("last_results"):
         if generate_btn:
             with st.spinner("Rendering slides with Playwright…"):
                 try:
-                    slides = generate_all_slides(raw_articles, slide_format, slide_mode)
+                    slides = generate_all_slides(raw_articles, slide_mode)
                     st.session_state["generated_slides"] = slides
-                    st.session_state["slides_format"] = slide_format
                 except Exception as e:
                     st.error(
                         f"❌ Slide generation failed: {e}\n\n"
