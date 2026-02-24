@@ -20,6 +20,13 @@ from io import BytesIO
 import anthropic
 import pandas as pd
 import streamlit as st
+from google import genai
+from google.genai import types as genai_types
+from PIL import Image
+from pptx import Presentation
+from pptx.util import Inches, Pt, Emu
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Page config
@@ -140,6 +147,13 @@ st.markdown("""
         background: linear-gradient(135deg, #1a3a6e, #2e6db4);
         color: white; font-size: .7rem; font-weight: 700;
         padding: .2rem .8rem; border-radius: 20px; letter-spacing: .05em;
+    }
+    .pill-banana {
+        display: inline-block;
+        background: linear-gradient(135deg, #d97706, #f59e0b);
+        color: white; font-size: .7rem; font-weight: 700;
+        padding: .2rem .8rem; border-radius: 20px; letter-spacing: .05em;
+        margin-left: .4rem;
     }
 
     /* ── Summary / verify text ── */
@@ -777,11 +791,256 @@ def is_within_24h(pub: str) -> bool:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Nano Banana Pro — Slide generation with Gemini image model
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Colour palette for slide backgrounds — matches the app's navy/professional theme
+SLIDE_COLORS = {
+    "Stocks":              ("#0a1628", "#1a3a6e"),
+    "Fiats":               ("#0d1b2a", "#1b2838"),
+    "Indexes":             ("#0f1b3d", "#1e3a5f"),
+    "Regional":            ("#102030", "#1a4050"),
+    "Country Credit":      ("#0e1a2e", "#1c3050"),
+    "Alternative Lending": ("#101828", "#1e2d45"),
+    "Fintech":             ("#0b1a30", "#1a3060"),
+    "Start-up":            ("#12182a", "#2a3552"),
+    "Sustainable Finance": ("#0a1f15", "#1a4032"),
+    "Marketing":           ("#1a1030", "#302050"),
+    "Entertainment":       ("#1a0e28", "#351a50"),
+}
+
+
+def _generate_slide_image(
+    gemini_client: genai.Client,
+    prompt: str,
+    model: str = "gemini-2.5-flash-preview-image-generation",
+) -> Image.Image | None:
+    """Call Nano Banana (Gemini image generation) and return a PIL Image, or None on failure."""
+    try:
+        response = gemini_client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=genai_types.ImageConfig(
+                    aspect_ratio="16:9",
+                ),
+            ),
+        )
+        for part in response.candidates[0].content.parts:
+            if part.inline_data:
+                img = Image.open(BytesIO(part.inline_data.data))
+                return img
+    except Exception:
+        return None
+    return None
+
+
+def _build_title_slide_prompt(categories: list[str], date_str: str) -> str:
+    cat_list = ", ".join(categories)
+    return (
+        f"Create a professional, modern presentation title slide. "
+        f"The slide should have a dark navy-blue gradient background (#0a1628 to #1a3a6e). "
+        f"Display the title '24h News Explorer' in large, bold white text at the center. "
+        f"Below the title, show the subtitle 'Daily News Briefing — {date_str}' in lighter blue text. "
+        f"At the bottom, show the categories covered: '{cat_list}' in small, elegant text. "
+        f"Add subtle geometric patterns and news-related iconography (globe, signal waves, "
+        f"chart lines) as decorative elements. Professional corporate style, clean typography, "
+        f"16:9 aspect ratio. No placeholder text — only the exact text specified."
+    )
+
+
+def _build_category_slide_prompt(
+    category: str,
+    icon: str,
+    headlines: list[str],
+    colors: tuple[str, str],
+) -> str:
+    headline_text = "\\n".join(f"• {h}" for h in headlines[:5])
+    return (
+        f"Create a professional presentation slide for a news briefing. "
+        f"Dark gradient background from {colors[0]} to {colors[1]}. "
+        f"In the top-left corner, display '{icon} {category}' as the section header "
+        f"in bold white text with a subtle glow effect. "
+        f"Below the header, list these news headlines in clean white text, each on its own line:\n"
+        f"{headline_text}\n"
+        f"Use a professional sans-serif font. Add subtle visual elements related to "
+        f"{'finance and market charts' if category in ('Stocks', 'Fiats', 'Indexes', 'Country Credit') else 'technology and business'} "
+        f"as background decoration. Clean, modern corporate slide design, 16:9 aspect ratio. "
+        f"Render the text exactly as specified — do not add or change any words."
+    )
+
+
+def _build_summary_slide_prompt(total_articles: int, categories_covered: int, verified: int) -> str:
+    return (
+        f"Create a professional presentation summary/closing slide. "
+        f"Dark navy-blue gradient background (#0a1628 to #1a3a6e). "
+        f"Display 'Summary' as the title in bold white text. "
+        f"Show three key metrics in large, highlighted boxes arranged horizontally: "
+        f"'{total_articles} Articles' (blue accent), '{categories_covered} Categories' (teal accent), "
+        f"'{verified} Verified' (green accent). "
+        f"Below the metrics, add the text 'Powered by Claude + Nano Banana Pro' in subtle grey. "
+        f"Clean, modern corporate style with subtle geometric patterns. 16:9 aspect ratio."
+    )
+
+
+def _add_image_slide(prs: Presentation, img: Image.Image) -> None:
+    """Add a full-bleed image slide to the presentation."""
+    slide_layout = prs.slide_layouts[6]  # blank layout
+    slide = prs.slides.add_slide(slide_layout)
+    img_bytes = BytesIO()
+    img.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
+    slide.shapes.add_picture(
+        img_bytes,
+        Emu(0), Emu(0),
+        prs.slide_width, prs.slide_height,
+    )
+
+
+def _add_fallback_slide(
+    prs: Presentation,
+    title: str,
+    body_lines: list[str],
+    colors: tuple[str, str] = ("#0a1628", "#1a3a6e"),
+) -> None:
+    """Add a text-only fallback slide when image generation fails."""
+    slide_layout = prs.slide_layouts[6]  # blank layout
+    slide = prs.slides.add_slide(slide_layout)
+
+    # Dark background shape
+    from pptx.util import Emu as _Emu
+    bg_shape = slide.shapes.add_shape(
+        1,  # rectangle
+        _Emu(0), _Emu(0),
+        prs.slide_width, prs.slide_height,
+    )
+    bg_shape.fill.solid()
+    bg_shape.fill.fore_color.rgb = RGBColor(0x0a, 0x16, 0x28)
+    bg_shape.line.fill.background()
+
+    # Title
+    txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.6), Inches(8.4), Inches(1.0))
+    tf = txBox.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = title
+    p.font.size = Pt(32)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    p.alignment = PP_ALIGN.LEFT
+
+    # Body
+    body_box = slide.shapes.add_textbox(Inches(0.8), Inches(1.8), Inches(8.4), Inches(4.5))
+    tf2 = body_box.text_frame
+    tf2.word_wrap = True
+    for i, line in enumerate(body_lines[:6]):
+        if i == 0:
+            p2 = tf2.paragraphs[0]
+        else:
+            p2 = tf2.add_paragraph()
+        p2.text = f"• {line}"
+        p2.font.size = Pt(16)
+        p2.font.color.rgb = RGBColor(0xD0, 0xD9, 0xE8)
+        p2.space_after = Pt(10)
+
+
+def generate_slides_pptx(
+    raw_articles: dict[str, list[dict]],
+    gemini_api_key: str,
+    selected_cats: list[str],
+    progress_callback=None,
+) -> bytes:
+    """
+    Generate a PPTX presentation with Nano Banana Pro slide images.
+    Falls back to styled text slides if image generation fails.
+    """
+    gemini_client = genai.Client(api_key=gemini_api_key)
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    date_str = datetime.now().strftime("%B %d, %Y")
+    total_steps = len(selected_cats) + 2  # title + categories + summary
+    step = 0
+
+    # ── Title slide ────────────────────────────────────────────────────────
+    if progress_callback:
+        progress_callback(step / total_steps, "Generating title slide…")
+    title_prompt = _build_title_slide_prompt(selected_cats, date_str)
+    title_img = _generate_slide_image(gemini_client, title_prompt)
+    if title_img:
+        _add_image_slide(prs, title_img)
+    else:
+        _add_fallback_slide(prs, f"24h News Explorer — {date_str}", [
+            f"Categories: {', '.join(selected_cats)}",
+            "Powered by Claude + Nano Banana Pro",
+        ])
+    step += 1
+
+    # ── Category slides ────────────────────────────────────────────────────
+    total_articles = 0
+    confirmed_count = 0
+    for cat in selected_cats:
+        if progress_callback:
+            progress_callback(step / total_steps, f"Generating {cat} slide…")
+
+        articles = raw_articles.get(cat, [])
+        total_articles += len(articles)
+        for a in articles:
+            if a.get("verified_score", -1) >= VERIFY_HIGH:
+                confirmed_count += 1
+
+        headlines = [a.get("title", "Untitled") for a in articles]
+        icon = CATEGORY_ICONS.get(cat, "📌")
+        colors = SLIDE_COLORS.get(cat, ("#0a1628", "#1a3a6e"))
+
+        if headlines:
+            cat_prompt = _build_category_slide_prompt(cat, icon, headlines, colors)
+            cat_img = _generate_slide_image(gemini_client, cat_prompt)
+            if cat_img:
+                _add_image_slide(prs, cat_img)
+            else:
+                _add_fallback_slide(prs, f"{icon} {cat}", headlines, colors)
+        step += 1
+
+        # Brief pause between API calls to respect rate limits
+        if step < total_steps - 1:
+            time.sleep(2)
+
+    # ── Summary slide ──────────────────────────────────────────────────────
+    if progress_callback:
+        progress_callback(step / total_steps, "Generating summary slide…")
+    summary_prompt = _build_summary_slide_prompt(
+        total_articles, len(selected_cats), confirmed_count,
+    )
+    summary_img = _generate_slide_image(gemini_client, summary_prompt)
+    if summary_img:
+        _add_image_slide(prs, summary_img)
+    else:
+        _add_fallback_slide(prs, "Summary", [
+            f"{total_articles} articles collected",
+            f"{len(selected_cats)} categories covered",
+            f"{confirmed_count} articles verified",
+            "Powered by Claude + Nano Banana Pro",
+        ])
+
+    # ── Export to bytes ────────────────────────────────────────────────────
+    pptx_bytes = BytesIO()
+    prs.save(pptx_bytes)
+    return pptx_bytes.getvalue()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Sidebar
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
-    st.markdown('<span class="pill-claude">✦ Powered by Claude + Web Search</span>', unsafe_allow_html=True)
+    st.markdown(
+        '<span class="pill-claude">✦ Powered by Claude + Web Search</span>'
+        '<span class="pill-banana">🍌 Nano Banana Slides</span>',
+        unsafe_allow_html=True,
+    )
     st.markdown("")
 
     claude_api_key = st.text_input(
@@ -789,6 +1048,16 @@ with st.sidebar:
         type="password",
         placeholder="sk-ant-…",
         help="Get yours at https://console.anthropic.com — this is the only key needed.",
+    )
+
+    gemini_api_key = st.text_input(
+        "Google Gemini API Key (for Slides)",
+        type="password",
+        placeholder="AIza…",
+        help=(
+            "Optional — enables Nano Banana Pro slide generation. "
+            "Get a free key at https://aistudio.google.com/apikey"
+        ),
     )
 
     st.markdown("---")
@@ -856,7 +1125,7 @@ st.markdown("""
         &nbsp;·&nbsp;
         Asia · APAC · SEA focus
         &nbsp;·&nbsp;
-        Export to Excel
+        Export to Excel &amp; Slides
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1009,13 +1278,72 @@ if search_btn or st.session_state.get("last_results"):
     if all_data:
         excel_bytes = df_to_excel(all_data)
         ts = datetime.now().strftime("%Y%m%d_%H%M")
-        st.download_button(
-            label="📥  Export All Results to Excel",
-            data=excel_bytes,
-            file_name=f"news_24h_{ts}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+
+        exp_col1, exp_col2 = st.columns(2)
+        with exp_col1:
+            st.download_button(
+                label="📥  Export All Results to Excel",
+                data=excel_bytes,
+                file_name=f"news_24h_{ts}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        # ── Nano Banana Pro — Slide Generation ────────────────────────────────
+        with exp_col2:
+            if gemini_api_key:
+                slides_btn = st.button(
+                    "🍌  Generate Slides with Nano Banana",
+                    use_container_width=True,
+                    type="primary",
+                    key="gen_slides_btn",
+                )
+            else:
+                st.button(
+                    "🍌  Generate Slides (add Gemini key →)",
+                    use_container_width=True,
+                    disabled=True,
+                    key="gen_slides_btn_disabled",
+                    help="Add your Google Gemini API key in the sidebar to enable Nano Banana slide generation.",
+                )
+                slides_btn = False
+
+        if slides_btn and gemini_api_key and raw_articles:
+            slides_progress = st.progress(0, text="Preparing slides…")
+            slides_status   = st.empty()
+
+            def _slides_progress_cb(pct: float, msg: str):
+                slides_progress.progress(min(pct, 1.0), text=msg)
+                slides_status.markdown(
+                    f"🍌 **Nano Banana Pro** — {msg}",
+                )
+
+            try:
+                pptx_data = generate_slides_pptx(
+                    raw_articles    = raw_articles,
+                    gemini_api_key  = gemini_api_key,
+                    selected_cats   = selected_cats,
+                    progress_callback = _slides_progress_cb,
+                )
+                slides_progress.progress(1.0, text="Slides ready!")
+                slides_status.empty()
+
+                st.download_button(
+                    label="📥  Download Presentation (PPTX)",
+                    data=pptx_data,
+                    file_name=f"news_slides_{ts}.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True,
+                )
+                st.success(
+                    "✅ Slides generated with **Nano Banana Pro** — "
+                    "download your PPTX above!"
+                )
+            except Exception as e:
+                slides_progress.empty()
+                slides_status.empty()
+                st.error(f"❌ Slide generation failed: {e}")
+
         st.markdown("---")
 
     # ── Article cards ─────────────────────────────────────────────────────────
