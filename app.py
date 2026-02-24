@@ -14,12 +14,20 @@ Only ONE API key needed: your Anthropic (Claude) key.
 import json
 import re
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 import anthropic
 import pandas as pd
 import streamlit as st
+
+from slide_generator import (
+    generate_all_slides,
+    generate_category_slide,
+    generate_article_slide,
+    SlideFormat,
+)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Page config
@@ -1016,6 +1024,97 @@ if search_btn or st.session_state.get("last_results"):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+
+    # ── Social-media slide generator ──────────────────────────────────────────
+    if all_data and raw_articles:
+        st.markdown("---")
+        st.markdown(
+            '<div class="section-title">🎨 Social Media Slides</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Generate branded slides from the news above — ready to post on "
+            "Instagram, LinkedIn, or Stories."
+        )
+
+        col_fmt, col_mode = st.columns(2)
+        with col_fmt:
+            slide_format: SlideFormat = st.selectbox(
+                "Slide format",
+                options=["instagram", "story", "linkedin"],
+                format_func=lambda f: {
+                    "instagram": "📸 Instagram (1080×1080)",
+                    "story":     "📱 Story (1080×1920)",
+                    "linkedin":  "💼 LinkedIn (1200×627)",
+                }[f],
+                key="slide_format",
+            )
+        with col_mode:
+            slide_mode = st.selectbox(
+                "Slide content",
+                options=["summary", "individual", "both"],
+                format_func=lambda m: {
+                    "summary":    "📋 Category summaries (cover + per-category)",
+                    "individual": "📰 One slide per article",
+                    "both":       "📦 All slides (summaries + individual)",
+                }[m],
+                key="slide_mode",
+            )
+
+        generate_btn = st.button(
+            "🎨  Generate Social Media Slides",
+            use_container_width=True,
+            type="primary",
+            key="gen_slides_btn",
+        )
+
+        # Show previously generated slides if available
+        if generate_btn:
+            with st.spinner("Rendering slides with Playwright…"):
+                try:
+                    slides = generate_all_slides(raw_articles, slide_format, slide_mode)
+                    st.session_state["generated_slides"] = slides
+                    st.session_state["slides_format"] = slide_format
+                except Exception as e:
+                    st.error(
+                        f"❌ Slide generation failed: {e}\n\n"
+                        "Make sure Playwright is installed: "
+                        "`pip install playwright && playwright install chromium`"
+                    )
+                    slides = []
+
+        slides = st.session_state.get("generated_slides", [])
+        if slides:
+            st.success(f"✅ Generated {len(slides)} slide{'s' if len(slides) != 1 else ''}!")
+
+            # Download all as ZIP
+            zip_buf = BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname, png_data in slides:
+                    zf.writestr(fname, png_data)
+            zip_buf.seek(0)
+
+            st.download_button(
+                label=f"📥  Download All Slides ({len(slides)} images, ZIP)",
+                data=zip_buf.getvalue(),
+                file_name=f"news_slides_{ts}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+            # Preview slides in a grid
+            preview_cols = st.columns(min(len(slides), 3))
+            for idx, (fname, png_data) in enumerate(slides):
+                with preview_cols[idx % len(preview_cols)]:
+                    st.image(png_data, caption=fname, use_container_width=True)
+                    st.download_button(
+                        label=f"📥 {fname}",
+                        data=png_data,
+                        file_name=fname,
+                        mime="image/png",
+                        key=f"dl_slide_{idx}",
+                    )
+
         st.markdown("---")
 
     # ── Article cards ─────────────────────────────────────────────────────────
