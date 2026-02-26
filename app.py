@@ -292,10 +292,50 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
-    "Indexes":             ["SPY", "NASDAQ", "Dow", "Straits Times Index Singapore", "Nikkei"],
-    "Fiats":               ["DXY", "rupee", "Singapore dollar"],
-    "Sustainable Finance": ["green bonds", "ESG", "green finance", "climate finance"],
-    "Stocks":              ["earnings"],
+    "Stocks": [
+        "earnings", "profits", "stock rally", "stock drop", "guidance",
+        "dividends", "buyback", "IPO", "valuation", "volatility",
+    ],
+    "Fiats": [
+        "dollar", "euro", "DXY", "currency", "FX",
+        "exchange rate", "devaluation", "central bank", "rate hike", "inflation",
+    ],
+    "Indexes": [
+        "S&P 500", "Nasdaq", "Dow", "Nikkei", "Hang Seng",
+        "MSCI", "market rally", "market selloff", "futures", "ETF",
+    ],
+    "Regional": [
+        "ASEAN", "Southeast Asia", "APAC", "Singapore economy", "Indonesia economy",
+        "China stimulus", "Asia growth", "trade", "exports", "regional outlook",
+    ],
+    "Country Credit": [
+        "sovereign debt", "government bonds", "credit rating", "Moody's", "S&P rating",
+        "Fitch", "default risk", "debt crisis", "fiscal deficit", "bond yields",
+    ],
+    "Alternative Lending": [
+        "private credit", "alternative lending", "SME loans", "non-bank lending", "asset-backed",
+        "loan portfolio", "credit fund", "lending platform", "yield", "structured finance",
+    ],
+    "Fintech": [
+        "fintech", "digital bank", "e-wallet", "payments", "BNPL",
+        "digital lending", "open banking", "blockchain", "crypto", "financial inclusion",
+    ],
+    "Start-up": [
+        "startup funding", "venture capital", "Series A", "Series B", "unicorn",
+        "valuation", "seed round", "acquisition", "IPO", "founder",
+    ],
+    "Sustainable Finance": [
+        "green bond", "ESG", "sustainability", "climate finance", "carbon",
+        "net zero", "energy transition", "impact investing", "renewable energy", "climate policy",
+    ],
+    "Marketing": [
+        "branding", "advertising", "digital marketing", "campaign", "consumer",
+        "product launch", "social media", "growth", "strategy", "market share",
+    ],
+    "Entertainment": [
+        "Singapore events", "concert Singapore", "theatre Singapore", "festival Singapore", "F1 Singapore",
+        "Marina Bay", "Sentosa events", "art exhibition", "shows", "weekend events",
+    ],
 }
 
 CATEGORY_GEO_FOCUS: dict[str, str] = {
@@ -378,6 +418,8 @@ def fetch_news_with_search(
     n: int,
     trusted_only: bool,
     keywords: list[str] | None = None,
+    excluded_urls: set[str] | None = None,
+    excluded_titles: set[str] | None = None,
 ) -> list[dict]:
     """
     Pass 1: Ask Claude to search the live web for the latest news in `category`.
@@ -415,6 +457,22 @@ def fetch_news_with_search(
         else f"Preferred trusted sources (prioritise these): {trusted_str}."
     )
 
+    # Build exclusion rule: skip articles already found in other categories
+    excl_urls   = excluded_urls   or set()
+    excl_titles = excluded_titles or set()
+    if excl_urls or excl_titles:
+        excl_parts = []
+        if excl_urls:
+            excl_parts.append("URLs: " + "; ".join(sorted(excl_urls)))
+        if excl_titles:
+            excl_parts.append("Headlines: " + "; ".join(sorted(excl_titles)))
+        exclusion_rule = (
+            "\nDEDUPLICATION — these articles are already assigned to other categories. "
+            "Do NOT include them here, even if relevant:\n" + "\n".join(excl_parts)
+        )
+    else:
+        exclusion_rule = ""
+
     # Extra ranking instruction for high-impact market categories
     if category in HIGH_IMPACT_CATEGORIES:
         ranking_rule = (
@@ -441,7 +499,7 @@ Geographic / editorial focus:
 
 {ranking_rule}
 
-{source_rule}
+{source_rule}{exclusion_rule}
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
@@ -903,6 +961,10 @@ if search_btn or st.session_state.get("last_results"):
         INTER_CAT_PAUSE   = 6   # seconds between categories
         INTER_PASS_PAUSE  = 3   # seconds between Pass 1 → Pass 2 within a category
 
+        # Cross-category deduplication: track every URL and title already assigned
+        seen_urls:   set[str] = set()
+        seen_titles: set[str] = set()
+
         for i, cat in enumerate(selected_cats):
             icon = CATEGORY_ICONS.get(cat, "📌")
             base_pct = i / total_cats   # fraction at start of this category
@@ -927,12 +989,28 @@ if search_btn or st.session_state.get("last_results"):
             )
 
             articles = fetch_news_with_search(
-                category       = cat,
-                claude_api_key = claude_api_key,
-                n              = max_per_cat,
-                trusted_only   = trusted_only,
-                keywords       = category_keywords.get(cat, []),
+                category        = cat,
+                claude_api_key  = claude_api_key,
+                n               = max_per_cat,
+                trusted_only    = trusted_only,
+                keywords        = category_keywords.get(cat, []),
+                excluded_urls   = seen_urls,
+                excluded_titles = seen_titles,
             )
+
+            # Post-fetch safety filter: drop any article already seen in a prior category
+            articles = [
+                a for a in articles
+                if a.get("url",   "").strip() not in seen_urls
+                and a.get("title", "").strip() not in seen_titles
+            ]
+
+            # Register this category's articles so future categories won't repeat them
+            for a in articles:
+                if a.get("url"):
+                    seen_urls.add(a["url"].strip())
+                if a.get("title"):
+                    seen_titles.add(a["title"].strip())
 
             # ── PASS 2: Verify ────────────────────────────────────────────────
             if articles:
