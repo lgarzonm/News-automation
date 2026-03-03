@@ -619,8 +619,12 @@ Return ONLY a raw JSON array (no markdown fences) with exactly {len(articles)} o
             verifications = _extract_json_array(raw)
 
             if verifications is None:
+                if attempt < len(delays):
+                    continue   # no JSON returned — retry
                 return _mark_verify_skipped(articles, "Verifier returned no JSON")
             if not isinstance(verifications, list):
+                if attempt < len(delays):
+                    continue   # unexpected type — retry
                 return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
 
             # Merge verification results back into article dicts
@@ -734,9 +738,15 @@ def _run_claude_search(
             articles = _extract_json_array(raw)
 
             if articles is None:
+                # Claude returned text without a JSON array — treat as soft failure
+                if attempt < len(delays):
+                    continue   # retry
                 return []
             if not isinstance(articles, list):
                 raise ValueError("Expected JSON array")
+            if len(articles) == 0 and attempt < len(delays):
+                # Claude returned an empty list — retry before giving up
+                continue
             return articles[:n]
 
         except anthropic.AuthenticationError:
