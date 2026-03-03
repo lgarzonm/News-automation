@@ -142,8 +142,13 @@ st.markdown("""
         padding: .2rem .8rem; border-radius: 20px; letter-spacing: .05em;
     }
 
-    /* ── Summary / verify text ── */
-    .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
+    /* ── Summary ── */
+    .summary-text {
+        color: #374151; font-size: .875rem; line-height: 1.5;
+        margin: .65rem 0 .5rem 0;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
 
     /* ── Slider — primary colour handled by config.toml; ── */
     /* belt-and-braces: ensure the filled track is navy, no red dot at min  */
@@ -1193,15 +1198,8 @@ if search_btn or st.session_state.get("last_results"):
 
                 clean_summary = strip_html_tags(summary)
                 summary_html = (
-                    f"<p class='summary-text'>"
-                    f"{clean_summary[:280]}{'…' if len(clean_summary) > 280 else ''}</p>"
+                    f"<p class='summary-text'>{clean_summary}</p>"
                 ) if clean_summary else ""
-
-                verify_note_html = (
-                    f"<div class='verify-note'>"
-                    f"<span class='pass-label pass-2'>PASS 2 · VERIFY</span> {v_note}"
-                    f"</div>"
-                ) if v_note and v_status != "skipped" else ""
 
                 # Sanitise URL: strip quotes and whitespace that break inline HTML
                 safe_url = url.strip().replace('"', '%22').replace("'", '%27')
@@ -1234,7 +1232,6 @@ if search_btn or st.session_state.get("last_results"):
                     </div>
                     {stale_html}
                     {summary_html}
-                    {verify_note_html}
                     {read_link}
                 </div>
                 """, unsafe_allow_html=True)
