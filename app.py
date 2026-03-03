@@ -938,8 +938,6 @@ with st.sidebar:
     st.markdown("### 🔍 Options")
     max_per_cat   = st.slider("Articles per category", 1, 10, 5)
     trusted_only  = st.checkbox("Trusted sources only", value=True)
-    run_verify    = st.checkbox("Run Pass 2 verification", value=False,
-                                help="Adds a second Claude call per category to cross-check credibility. Doubles API usage.")
     force_refresh = st.checkbox(
         f"Force refresh (ignore {CACHE_TTL_MINUTES}-min cache)", value=False,
         help=f"By default, results are reused for {CACHE_TTL_MINUTES} minutes to save API credits. "
@@ -1111,7 +1109,7 @@ if search_btn or st.session_state.get("last_results"):
                         seen_titles.add(a["title"].strip())
 
                 # ── PASS 2: Verify (optional) ─────────────────────────────────
-                if articles and run_verify:
+                if articles:
                     time.sleep(INTER_PASS_PAUSE)
                     status.markdown(
                         f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
@@ -1247,10 +1245,12 @@ if search_btn or st.session_state.get("last_results"):
                 stale_html = ""
                 if pub and not is_within_24h(pub):
                     stale_html = (
-                        "<div style='font-size:.75rem;color:#b45309;background:#fef3c7;"
-                        "border:1px solid #fde68a;border-radius:5px;padding:.3rem .6rem;"
-                        "margin:.4rem 0;'>⚠️ <b>Outside 24h window</b> — "
-                        f"published {pub[:10]}</div>"
+                        "<div style='font-size:.85rem;font-weight:700;color:#7c2d12;"
+                        "background:#fff7ed;border-left:5px solid #ea580c;"
+                        "border-radius:6px;padding:.55rem .85rem;margin-bottom:.6rem;"
+                        "display:flex;align-items:center;gap:.5rem;'>"
+                        "⚠️ <span>Article outside 24h window — published "
+                        f"<u>{pub[:10]}</u>. Shown as fallback because nothing more recent was found.</span></div>"
                     )
 
                 clean_summary = strip_html_tags(summary)
@@ -1279,6 +1279,7 @@ if search_btn or st.session_state.get("last_results"):
 
                 st.markdown(f"""
                 <div class="news-card {card_cls}">
+                    {stale_html}
                     <p class="headline">{title}</p>
                     <div class="meta">
                         {source_badge}
@@ -1288,7 +1289,6 @@ if search_btn or st.session_state.get("last_results"):
                         <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
                         {"<span class='badge badge-verify-skip'>🔄 Extended search</span>" if is_fallback else ""}
                     </div>
-                    {stale_html}
                     {summary_html}
                     {read_link}
                 </div>
