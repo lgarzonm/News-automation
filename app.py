@@ -694,7 +694,7 @@ def _run_claude_agentic_loop(
     client   = anthropic.Anthropic(api_key=claude_api_key)
     messages = [{"role": "user", "content": prompt}]
 
-    kwargs: dict = dict(model=model, max_tokens=4096, messages=messages)
+    kwargs: dict = dict(model=model, max_tokens=1500, messages=messages)
     if tools:
         kwargs["tools"] = tools
 
@@ -744,7 +744,7 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=SEARCH_MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             )
             articles = _extract_json_array(raw)
 
@@ -926,6 +926,8 @@ with st.sidebar:
     st.markdown("### 🔍 Options")
     max_per_cat  = st.slider("Articles per category", 1, 10, 5)
     trusted_only = st.checkbox("Trusted sources only", value=True)
+    run_verify   = st.checkbox("Run Pass 2 verification", value=False,
+                               help="Adds a second Claude call per category to cross-check credibility. Doubles API usage.")
 
     st.markdown("---")
     st.markdown("### 🔬 How verification works")
@@ -1056,8 +1058,8 @@ if search_btn or st.session_state.get("last_results"):
                 if a.get("title"):
                     seen_titles.add(a["title"].strip())
 
-            # ── PASS 2: Verify ────────────────────────────────────────────────
-            if articles:
+            # ── PASS 2: Verify (optional) ─────────────────────────────────────
+            if articles and run_verify:
                 time.sleep(INTER_PASS_PAUSE)   # brief gap between Pass 1 and Pass 2
                 status.markdown(
                     f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
