@@ -445,23 +445,6 @@ VERIFY_MEDIUM = 45   # score ≥ 45  → partially confirmed ⚠️
 # Categories where we want top-trending / most-important ranking
 HIGH_IMPACT_CATEGORIES = {"Stocks", "Fiats", "Indexes", "Country Credit"}
 
-# How many hours back each category searches for news.
-# Fast-moving market categories stay at 24 h; niche / slow-moving ones get more runway
-# so they are never empty on a quiet news day.
-CATEGORY_TIME_WINDOW_HOURS: dict[str, int] = {
-    "Stocks":              24,
-    "Fiats":               24,
-    "Indexes":             24,
-    "Regional":            24,
-    "Fintech":             24,
-    "Country Credit":      72,
-    "Alternative Lending": 72,
-    "Entertainment":       72,
-    "Sustainable Finance": 48,
-    "Marketing":           48,
-    "Start-up":            48,
-}
-
 # Results are reused for this many minutes before a fresh API call is made.
 CACHE_TTL_MINUTES = 30
 
@@ -474,19 +457,22 @@ def fetch_news_with_search(
     keywords: list[str] | None = None,
     excluded_urls: set[str] | None = None,
     excluded_titles: set[str] | None = None,
-    time_window_hours: int = 24,
+    fill_hours: int = 48,
 ) -> list[dict]:
     """
     Pass 1: Ask Claude to search the live web for the latest news in `category`.
+    Primary window is always the last 24 h. If fewer than n articles are found
+    there, Claude fills the remaining slots from up to `fill_hours` ago.
     Returns a raw list of article dicts (title, source, published, url, summary, trusted).
     """
     # Use SGT (UTC+8) as the reference timezone — the app's primary audience is Singapore
-    sgt_offset  = timezone(timedelta(hours=8))
-    sgt_now     = datetime.now(timezone.utc).astimezone(sgt_offset)
-    now_sgt_str = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
-    # Cutoff: articles should be published within the category's time window
-    cutoff_utc  = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
-    cutoff_str  = cutoff_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    sgt_offset     = timezone(timedelta(hours=8))
+    sgt_now        = datetime.now(timezone.utc).astimezone(sgt_offset)
+    now_sgt_str    = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
+    cutoff_24h     = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_fill    = datetime.now(timezone.utc) - timedelta(hours=fill_hours)
+    cutoff_24h_str = cutoff_24h.strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff_fill_str = cutoff_fill.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
     base_query   = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
@@ -555,13 +541,14 @@ Geographic / editorial focus:
 
 {source_rule}{exclusion_rule}
 
-PUBLICATION DATE RULES — follow in order:
-1. FIRST PRIORITY: articles published after {cutoff_str} (last {time_window_hours}h).
-   Search for these first — they are preferred.
-2. FILL RULE: if you find fewer than {n} articles within that window, extend your search
-   backwards in time until you have {n} total. Never return an empty array.
-   There is always relevant news — keep searching with different queries if needed.
-3. Every article you return must have a real, verifiable publication date.
+PUBLICATION DATE RULES — follow strictly in this order:
+1. PRIMARY WINDOW (preferred): search for articles published after {cutoff_24h_str} (last 24 h).
+   Fill as many of the {n} slots as possible from this window first.
+2. FILL WINDOW (fallback): if the last 24 h yields fewer than {n} articles, extend your search
+   back to {cutoff_fill_str} (last {fill_hours} h) to fill the remaining slots.
+   Only use older articles to top up — always prefer the most recent ones available.
+3. NEVER return an empty array — there is always relevant {category} news to be found.
+4. Every article must have a real, verifiable publication date.
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
@@ -1058,7 +1045,6 @@ if search_btn or st.session_state.get("last_results"):
             for i, cat in enumerate(selected_cats):
                 icon     = CATEGORY_ICONS.get(cat, "📌")
                 base_pct = i / total_cats
-                win_h    = CATEGORY_TIME_WINDOW_HOURS.get(cat, 24)
 
                 if i > 0:
                     status.markdown(
@@ -1070,8 +1056,7 @@ if search_btn or st.session_state.get("last_results"):
                 # ── PASS 1: Search ────────────────────────────────────────────
                 status.markdown(
                     f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
-                    f'🌐 Claude is searching for <b>{icon} {cat}</b> news '
-                    f'(last {win_h}h)…',
+                    f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
                     unsafe_allow_html=True,
                 )
                 progress.progress(
@@ -1080,32 +1065,34 @@ if search_btn or st.session_state.get("last_results"):
                 )
 
                 articles = fetch_news_with_search(
-                    category          = cat,
-                    claude_api_key    = claude_api_key,
-                    n                 = max_per_cat,
-                    trusted_only      = trusted_only,
-                    keywords          = category_keywords.get(cat, []),
-                    excluded_urls     = seen_urls,
-                    excluded_titles   = seen_titles,
-                    time_window_hours = win_h,
+                    category       = cat,
+                    claude_api_key = claude_api_key,
+                    n              = max_per_cat,
+                    trusted_only   = trusted_only,
+                    keywords       = category_keywords.get(cat, []),
+                    excluded_urls  = seen_urls,
+                    excluded_titles= seen_titles,
+                    fill_hours     = 48,   # prefer 24h; fill from up to 48h
                 )
 
                 # ── Auto-fallback if still empty ──────────────────────────────
+                # (rare — the prompt already fills from 48h; this catches genuine
+                #  dry spells by widening to 5 days with all source filters relaxed)
                 if not articles:
                     status.markdown(
                         f'<span class="pass-label pass-1">PASS 1 · RETRY</span>'
-                        f'🔄 No results — retrying <b>{icon} {cat}</b> with relaxed filters…',
+                        f'🔄 No results — retrying <b>{icon} {cat}</b> with extended window…',
                         unsafe_allow_html=True,
                     )
                     articles = fetch_news_with_search(
-                        category          = cat,
-                        claude_api_key    = claude_api_key,
-                        n                 = max_per_cat,
-                        trusted_only      = False,          # open up source filter
-                        keywords          = [],             # drop keyword restriction
-                        excluded_urls     = seen_urls,
-                        excluded_titles   = seen_titles,
-                        time_window_hours = win_h * 2,      # double the time window
+                        category       = cat,
+                        claude_api_key = claude_api_key,
+                        n              = max_per_cat,
+                        trusted_only   = False,   # open up source filter
+                        keywords       = [],      # drop keyword restriction
+                        excluded_urls  = seen_urls,
+                        excluded_titles= seen_titles,
+                        fill_hours     = 120,     # fill from up to 5 days
                     )
                     for a in articles:
                         a["fallback"] = True   # flag so card can show a note
