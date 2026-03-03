@@ -262,6 +262,7 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Bloomberg Green", "Reuters", "Financial Times", "The Straits Times",
         "Channel NewsAsia (CNA)", "Eco-Business", "MAS (Monetary Authority of Singapore)",
         "Asian Development Bank", "Carbon Brief", "GreenBiz",
+        "Yahoo Finance", "CNBC", "Wall Street Journal", "S&P Global",
     ],
     "Marketing": [
         "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
@@ -286,7 +287,7 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Alternative Lending": "alternative lending P2P crowdfunding credit Asia Singapore fintech news today",
     "Fintech":             "fintech financial technology Singapore Asia APAC payments digital banking news today",
     "Start-up":            "startup funding venture capital Asia Singapore APAC SEA news today",
-    "Sustainable Finance": "sustainable finance ESG green bonds Singapore Asia APAC news today",
+    "Sustainable Finance": "sustainable finance ESG green bonds climate infrastructure news today global",
     "Marketing":           "marketing advertising brand campaigns Asia Singapore APAC SEA news today",
     "Entertainment":       "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today",
 }
@@ -327,6 +328,7 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
     "Sustainable Finance": [
         "green bond", "ESG", "sustainability", "climate finance", "carbon",
         "net zero", "energy transition", "impact investing", "renewable energy", "climate policy",
+        "green infrastructure", "sustainable capital", "climate bond", "transition finance",
     ],
     "Marketing": [
         "branding", "advertising", "digital marketing", "campaign", "consumer",
@@ -378,9 +380,12 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Hong Kong and China."
     ),
     "Sustainable Finance": (
-        "Focus on sustainable finance, ESG, green and transition bonds in Asia, APAC "
-        "and SEA — especially Singapore (MAS Green Finance Action Plan), ASEAN "
-        "Taxonomy, and regional net-zero initiatives."
+        "Coverage should be global — include significant sustainable finance, ESG, "
+        "green bonds, climate infrastructure, and transition finance news from anywhere "
+        "in the world. Give priority to Asia, APAC and SEA stories (Singapore MAS Green "
+        "Finance Action Plan, ASEAN Taxonomy, regional net-zero initiatives), but do NOT "
+        "exclude major global deals, fund raises, or policy announcements from the US, "
+        "Europe, or other regions."
     ),
     "Marketing": (
         "Focus on marketing, advertising, branding, digital marketing and media campaigns "
