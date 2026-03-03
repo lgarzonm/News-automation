@@ -142,8 +142,13 @@ st.markdown("""
         padding: .2rem .8rem; border-radius: 20px; letter-spacing: .05em;
     }
 
-    /* ── Summary / verify text ── */
-    .summary-text { color: #4a5568; font-size: .85rem; margin: .6rem 0 .4rem 0; }
+    /* ── Summary ── */
+    .summary-text {
+        color: #374151; font-size: .875rem; line-height: 1.5;
+        margin: .65rem 0 .5rem 0;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
 
     /* ── Slider — primary colour handled by config.toml; ── */
     /* belt-and-braces: ensure the filled track is navy, no red dot at min  */
@@ -280,8 +285,9 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Marketing Week", "Ad Age", "Campaign ME", "Campaign",
     ],
     "Entertainment": [
-        "Variety Asia", "Hollywood Reporter", "Deadline",
-        "South China Morning Post", "The Straits Times",
+        "The Straits Times", "CNA", "TODAY", "8Days", "Mothership",
+        "Time Out Singapore", "Visit Singapore", "The Smart Local",
+        "Variety Asia", "South China Morning Post",
         "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
         "Nikkei Asia", "Vulcan Post", "Time Out", "Time Out Singapore",
         "Today Online", "Bandwagon",
@@ -299,7 +305,7 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Start-up":            "startup funding venture capital seed round Series A B news today",
     "Sustainable Finance": "sustainable finance ESG green bonds climate infrastructure news today global",
     "Marketing":           "marketing advertising brand campaigns media news today",
-    "Entertainment":       "entertainment events movies music concerts streaming news today",
+    "Entertainment":       "Singapore entertainment events concerts movies music theatre arts news today",
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
@@ -346,6 +352,8 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "product launch", "social media", "growth", "strategy", "market share",
     ],
     "Entertainment": [
+        "Singapore concert", "Singapore festival", "Singapore arts", "Singapore theatre",
+        "Singapore premiere", "Singapore exhibition", "local artist", "Singapore music",
         "concert", "festival", "movie", "streaming", "art exhibition",
         "theatre", "music", "K-pop", "anime", "gaming",
         "Singapore events", "things to do", "weekend events",
@@ -411,10 +419,13 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "and the Gulf/MENA region."
     ),
     "Entertainment": (
-        "Focus on entertainment news — movies, TV, music, streaming, gaming and celebrity "
-        "culture — in Asia, APAC and SEA. Prioritise content relevant to or produced in "
-        "Singapore, South Korea (K-pop/K-drama), Japan (anime/manga), China, Hong Kong, "
-        "India (Bollywood), Thailand, Malaysia, Indonesia and the Philippines."
+        "PRIMARY focus: Singapore entertainment — local events, concerts, festivals, "
+        "theatre, arts, movies premiering or screening in Singapore, Singaporean artists "
+        "and celebrities, Singapore-based productions. "
+        "SECONDARY: broader Asia/SEA entertainment only when it has clear Singapore "
+        "relevance (e.g. a K-pop act performing in Singapore, a regional streaming show "
+        "popular here). Do NOT include generic Hollywood or global pop-culture news "
+        "unless it has a direct Singapore angle."
     ),
 }
 
@@ -619,8 +630,12 @@ Return ONLY a raw JSON array (no markdown fences) with exactly {len(articles)} o
             verifications = _extract_json_array(raw)
 
             if verifications is None:
+                if attempt < len(delays):
+                    continue   # no JSON returned — retry
                 return _mark_verify_skipped(articles, "Verifier returned no JSON")
             if not isinstance(verifications, list):
+                if attempt < len(delays):
+                    continue   # unexpected type — retry
                 return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
 
             # Merge verification results back into article dicts
@@ -734,9 +749,15 @@ def _run_claude_search(
             articles = _extract_json_array(raw)
 
             if articles is None:
+                # Claude returned text without a JSON array — treat as soft failure
+                if attempt < len(delays):
+                    continue   # retry
                 return []
             if not isinstance(articles, list):
                 raise ValueError("Expected JSON array")
+            if len(articles) == 0 and attempt < len(delays):
+                # Claude returned an empty list — retry before giving up
+                continue
             return articles[:n]
 
         except anthropic.AuthenticationError:
@@ -1177,15 +1198,8 @@ if search_btn or st.session_state.get("last_results"):
 
                 clean_summary = strip_html_tags(summary)
                 summary_html = (
-                    f"<p class='summary-text'>"
-                    f"{clean_summary[:280]}{'…' if len(clean_summary) > 280 else ''}</p>"
+                    f"<p class='summary-text'>{clean_summary}</p>"
                 ) if clean_summary else ""
-
-                verify_note_html = (
-                    f"<div class='verify-note'>"
-                    f"<span class='pass-label pass-2'>PASS 2 · VERIFY</span> {v_note}"
-                    f"</div>"
-                ) if v_note and v_status != "skipped" else ""
 
                 # Sanitise URL: strip quotes and whitespace that break inline HTML
                 safe_url = url.strip().replace('"', '%22').replace("'", '%27')
@@ -1218,7 +1232,6 @@ if search_btn or st.session_state.get("last_results"):
                     </div>
                     {stale_html}
                     {summary_html}
-                    {verify_note_html}
                     {read_link}
                 </div>
                 """, unsafe_allow_html=True)
