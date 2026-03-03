@@ -367,12 +367,14 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "only for context."
     ),
     "Regional": (
-        "Coverage is global macro and geopolitical news. Primary focus: Asia, APAC, "
-        "and Southeast Asia (SEA) — Singapore, Malaysia, Indonesia, Thailand, Vietnam, "
-        "Philippines, Hong Kong, China, Japan, South Korea, Australia. "
-        "Also include major global geopolitical events (conflicts, sanctions, elections, "
-        "trade wars, Middle East, US policy) that have direct market or economic impact "
-        "even if they originate outside Asia."
+        "PRIMARY focus: Asia, APAC, and Southeast Asia (SEA) — Singapore, Malaysia, "
+        "Indonesia, Thailand, Vietnam, Philippines, Hong Kong, China, Japan, South Korea, "
+        "Australia. Fill most slots with Asia/SEA stories. "
+        "EXCEPTION: if a global event outside Asia is of exceptional magnitude — "
+        "e.g. a major military conflict, a US-Iran escalation, a G7 policy shock, "
+        "an oil-price spike — that is clearly moving global markets or dominating "
+        "front pages worldwide, include it (max 1-2 such stories). "
+        "Do NOT include routine non-Asia stories just because they are geopolitical."
     ),
     "Country Credit": (
         "Focus on sovereign and quasi-sovereign credit for Asian and APAC countries: "
