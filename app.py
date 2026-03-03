@@ -221,42 +221,51 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
     "Stocks": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "Nikkei Asia", "South China Morning Post", "The Straits Times",
-        "Business Times Singapore", "Seeking Alpha",
+        "Business Times Singapore", "Business Times", "Seeking Alpha",
+        "Investor's Business Daily", "Barron's", "MarketWatch", "Yahoo Finance",
     ],
     "Fiats": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "FX Street", "Investopedia", "Nikkei Asia",
         "South China Morning Post", "MAS (Monetary Authority of Singapore)",
+        "Barron's", "MarketWatch", "FX Empire",
     ],
     "Indexes": [
         "Bloomberg", "Reuters", "Financial Times", "CNBC",
         "Nikkei Asia", "South China Morning Post", "Business Times Singapore",
         "The Straits Times", "Morningstar", "S&P Global",
+        "MarketWatch", "Barron's", "Yahoo Finance",
     ],
     "Regional": [
         "Nikkei Asia", "South China Morning Post", "The Straits Times",
         "Bangkok Post", "The Jakarta Post", "Philippine Daily Inquirer",
         "Vietnam News", "Reuters", "Bloomberg", "Channel NewsAsia (CNA)",
+        "The Guardian", "BBC", "Associated Press", "Al Jazeera",
+        "Financial Times", "Wall Street Journal",
     ],
     "Country Credit": [
         "Bloomberg", "Reuters", "Financial Times", "Moody's",
         "S&P Global", "Fitch Ratings", "The Straits Times",
         "Nikkei Asia", "South China Morning Post", "Asian Development Bank",
+        "Vietnam News", "Bangkok Post", "The Jakarta Post",
     ],
     "Alternative Lending": [
-        "Bloomberg", "Reuters", "Fintech News Singapore", "e27",
+        "Bloomberg", "Reuters", "Financial Times", "Fintech News Singapore", "e27",
         "Deal Street Asia", "Tech in Asia", "The Business Times",
         "Crowdfund Insider", "Lending Times", "AltFi",
+        "Private Debt Investor", "Institutional Investor",
     ],
     "Fintech": [
         "Fintech News Singapore", "e27", "Deal Street Asia", "Tech in Asia",
         "TechCrunch", "Bloomberg", "Reuters", "The Business Times",
         "Channel NewsAsia (CNA)", "Fintechnews.sg",
+        "Fintech Futures", "Fintech Global", "Finextra", "Payments Dive",
     ],
     "Start-up": [
         "e27", "Tech in Asia", "Deal Street Asia", "TechCrunch",
         "Bloomberg", "Reuters", "Channel NewsAsia (CNA)",
         "The Straits Times", "KrASIA", "Vulcan Post",
+        "Yahoo Finance", "Forbes", "Business Insider",
     ],
     "Sustainable Finance": [
         "Bloomberg Green", "Reuters", "Financial Times", "The Straits Times",
@@ -268,28 +277,29 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
         "The Drum", "Adweek", "South China Morning Post",
         "The Straits Times", "Channel NewsAsia (CNA)",
-        "Marketing Week", "Ad Age",
+        "Marketing Week", "Ad Age", "Campaign ME", "Campaign",
     ],
     "Entertainment": [
         "Variety Asia", "Hollywood Reporter", "Deadline",
         "South China Morning Post", "The Straits Times",
         "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
-        "Nikkei Asia", "Vulcan Post",
+        "Nikkei Asia", "Vulcan Post", "Time Out", "Time Out Singapore",
+        "Today Online", "Bandwagon",
     ],
 }
 
 CATEGORY_SEARCH_QUERIES: dict[str, str] = {
-    "Stocks":              "global stock market equities news today Asia APAC",
+    "Stocks":              "global stock market equities Wall Street Asia APAC news today",
     "Fiats":               "forex currency exchange rates USD EUR JPY SGD AUD news today",
-    "Indexes":             "stock market index STI Nikkei Hang Seng ASX S&P 500 MSCI Asia news today",
-    "Regional":            "Asia APAC Southeast Asia SEA Singapore economy finance news today",
-    "Country Credit":      "sovereign credit rating Asia APAC Singapore bonds debt news today",
-    "Alternative Lending": "alternative lending P2P crowdfunding credit Asia Singapore fintech news today",
-    "Fintech":             "fintech financial technology Singapore Asia APAC payments digital banking news today",
-    "Start-up":            "startup funding venture capital Asia Singapore APAC SEA news today",
+    "Indexes":             "stock market index S&P 500 Dow Nasdaq Nikkei Hang Seng MSCI news today",
+    "Regional":            "global geopolitical macro economy Asia APAC Middle East news today",
+    "Country Credit":      "sovereign credit rating government bonds debt Asia APAC news today",
+    "Alternative Lending": "alternative lending private credit P2P non-bank financing news today",
+    "Fintech":             "fintech financial technology payments digital banking startup news today",
+    "Start-up":            "startup funding venture capital seed round Series A B news today",
     "Sustainable Finance": "sustainable finance ESG green bonds climate infrastructure news today global",
-    "Marketing":           "marketing advertising brand campaigns Asia Singapore APAC SEA news today",
-    "Entertainment":       "entertainment movies music streaming celebrities Asia Singapore APAC SEA news today",
+    "Marketing":           "marketing advertising brand campaigns media news today",
+    "Entertainment":       "entertainment events movies music concerts streaming news today",
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
@@ -307,7 +317,8 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
     ],
     "Regional": [
         "ASEAN", "Southeast Asia", "APAC", "Singapore economy", "Indonesia economy",
-        "China stimulus", "Asia growth", "trade", "exports", "regional outlook",
+        "China stimulus", "Asia growth", "trade", "geopolitical", "conflict",
+        "Middle East", "oil prices", "sanctions", "elections", "policy",
     ],
     "Country Credit": [
         "sovereign debt", "government bonds", "credit rating", "Moody's", "S&P rating",
@@ -335,8 +346,9 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "product launch", "social media", "growth", "strategy", "market share",
     ],
     "Entertainment": [
-        "Singapore events", "concert Singapore", "theatre Singapore", "festival Singapore", "F1 Singapore",
-        "Marina Bay", "Sentosa events", "art exhibition", "shows", "weekend events",
+        "concert", "festival", "movie", "streaming", "art exhibition",
+        "theatre", "music", "K-pop", "anime", "gaming",
+        "Singapore events", "things to do", "weekend events",
     ],
 }
 
@@ -355,9 +367,12 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "only for context."
     ),
     "Regional": (
-        "Focus EXCLUSIVELY on Asia, APAC, and Southeast Asia (SEA) — especially "
-        "Singapore, Malaysia, Indonesia, Thailand, Vietnam, Philippines, Hong Kong, "
-        "China, Japan, South Korea, Australia. No stories from outside these regions."
+        "Coverage is global macro and geopolitical news. Primary focus: Asia, APAC, "
+        "and Southeast Asia (SEA) — Singapore, Malaysia, Indonesia, Thailand, Vietnam, "
+        "Philippines, Hong Kong, China, Japan, South Korea, Australia. "
+        "Also include major global geopolitical events (conflicts, sanctions, elections, "
+        "trade wars, Middle East, US policy) that have direct market or economic impact "
+        "even if they originate outside Asia."
     ),
     "Country Credit": (
         "Focus on sovereign and quasi-sovereign credit for Asian and APAC countries: "
@@ -389,8 +404,9 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
     ),
     "Marketing": (
         "Focus on marketing, advertising, branding, digital marketing and media campaigns "
-        "in Asia, APAC and SEA — especially Singapore, Malaysia, Indonesia, Thailand, "
-        "Philippines, Hong Kong, Japan, South Korea and China."
+        "globally, with priority on Asia, APAC, SEA and Middle East — especially Singapore, "
+        "Malaysia, Indonesia, Thailand, Philippines, Hong Kong, Japan, South Korea, China, "
+        "and the Gulf/MENA region."
     ),
     "Entertainment": (
         "Focus on entertainment news — movies, TV, music, streaming, gaming and celebrity "
@@ -903,7 +919,7 @@ with st.sidebar:
   - 🟡 **45–74** Partially confirmed
   - 🔴 **< 45** Unconfirmed
 
-*Non-Stocks/Fiats categories focus on **Asia · APAC · SEA**.*
+*Most categories focus on **Asia · APAC · SEA**. Regional includes global geopolitical events. Sustainable Finance and Marketing have global coverage.*
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
