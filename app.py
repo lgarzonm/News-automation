@@ -445,6 +445,9 @@ VERIFY_MEDIUM = 45   # score ≥ 45  → partially confirmed ⚠️
 # Categories where we want top-trending / most-important ranking
 HIGH_IMPACT_CATEGORIES = {"Stocks", "Fiats", "Indexes", "Country Credit"}
 
+# Results are reused for this many minutes before a fresh API call is made.
+CACHE_TTL_MINUTES = 30
+
 
 def fetch_news_with_search(
     category: str,
@@ -454,18 +457,22 @@ def fetch_news_with_search(
     keywords: list[str] | None = None,
     excluded_urls: set[str] | None = None,
     excluded_titles: set[str] | None = None,
+    fill_hours: int = 48,
 ) -> list[dict]:
     """
     Pass 1: Ask Claude to search the live web for the latest news in `category`.
+    Primary window is always the last 24 h. If fewer than n articles are found
+    there, Claude fills the remaining slots from up to `fill_hours` ago.
     Returns a raw list of article dicts (title, source, published, url, summary, trusted).
     """
     # Use SGT (UTC+8) as the reference timezone — the app's primary audience is Singapore
-    sgt_offset  = timezone(timedelta(hours=8))
-    sgt_now     = datetime.now(timezone.utc).astimezone(sgt_offset)
-    now_sgt_str = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
-    # Strict cutoff: articles must be published AFTER this ISO timestamp
-    cutoff_utc  = datetime.now(timezone.utc) - timedelta(hours=24)
-    cutoff_str  = cutoff_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    sgt_offset     = timezone(timedelta(hours=8))
+    sgt_now        = datetime.now(timezone.utc).astimezone(sgt_offset)
+    now_sgt_str    = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
+    cutoff_24h     = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_fill    = datetime.now(timezone.utc) - timedelta(hours=fill_hours)
+    cutoff_24h_str = cutoff_24h.strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff_fill_str = cutoff_fill.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
     base_query   = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
@@ -521,10 +528,9 @@ def fetch_news_with_search(
             f"Select the {n} most significant and widely-reported stories within the scope above."
         )
 
-    prompt = f"""Current time: {now_sgt_str}  (UTC cutoff: {cutoff_str})
+    prompt = f"""Current time: {now_sgt_str}
 
-Use the web_search tool to find the {n} most important news stories about **{category}**
-that were published STRICTLY AFTER {cutoff_str} (i.e. within the last 24 hours only).
+Use the web_search tool to find the {n} most important news stories about **{category}**.
 
 Search query to use: "{search_q}"{keyword_line}
 
@@ -535,6 +541,15 @@ Geographic / editorial focus:
 
 {source_rule}{exclusion_rule}
 
+PUBLICATION DATE RULES — follow strictly in this order:
+1. PRIMARY WINDOW (preferred): search for articles published after {cutoff_24h_str} (last 24 h).
+   Fill as many of the {n} slots as possible from this window first.
+2. FILL WINDOW (fallback): if the last 24 h yields fewer than {n} articles, extend your search
+   back to {cutoff_fill_str} (last {fill_hours} h) to fill the remaining slots.
+   Only use older articles to top up — always prefer the most recent ones available.
+3. NEVER return an empty array — there is always relevant {category} news to be found.
+4. Every article must have a real, verifiable publication date.
+
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
   "title"     : exact headline from the article (string)
@@ -544,11 +559,9 @@ Each item must have these fields:
   "summary"   : your 1-2 sentence summary of the story (string)
   "trusted"   : true if the source is in [{trusted_str}], else false (boolean)
 
-STRICT RULES:
-- REJECT any article published before {cutoff_str} — do not include it regardless of relevance.
+OTHER RULES:
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
 - Apply the geographic/editorial focus strictly.
-- If you find fewer than {n} qualifying articles, return however many you found.
 - Do NOT wrap in markdown code fences — return the raw JSON array only.
 """
     return _run_claude_search(prompt, category, claude_api_key, n)
@@ -694,7 +707,7 @@ def _run_claude_agentic_loop(
     client   = anthropic.Anthropic(api_key=claude_api_key)
     messages = [{"role": "user", "content": prompt}]
 
-    kwargs: dict = dict(model=model, max_tokens=4096, messages=messages)
+    kwargs: dict = dict(model=model, max_tokens=1500, messages=messages)
     if tools:
         kwargs["tools"] = tools
 
@@ -734,8 +747,9 @@ def _run_claude_search(
     n: int,
 ) -> list[dict]:
     """Run a Claude web-search agentic loop and parse the JSON array response.
-    Retries up to 3 times with exponential backoff on rate-limit errors."""
-    delays = [5, 15, 30]   # seconds to wait before each retry attempt
+    Retries once on transient errors (bad JSON, rate limit). Empty results are
+    handled upstream by the auto-fallback — no point retrying the same prompt."""
+    delays = [8]   # one retry, 8 s gap, for transient API/JSON errors only
 
     for attempt, delay in enumerate([0] + delays):
         if delay:
@@ -744,20 +758,18 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=SEARCH_MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             )
             articles = _extract_json_array(raw)
 
             if articles is None:
-                # Claude returned text without a JSON array — treat as soft failure
+                # Claude returned text without a JSON array — retry once
                 if attempt < len(delays):
-                    continue   # retry
+                    continue
                 return []
             if not isinstance(articles, list):
                 raise ValueError("Expected JSON array")
-            if len(articles) == 0 and attempt < len(delays):
-                # Claude returned an empty list — retry before giving up
-                continue
+            # Empty list is returned immediately; fallback is handled by the caller
             return articles[:n]
 
         except anthropic.AuthenticationError:
@@ -924,8 +936,13 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🔍 Options")
-    max_per_cat  = st.slider("Articles per category", 1, 10, 5)
-    trusted_only = st.checkbox("Trusted sources only", value=True)
+    max_per_cat   = st.slider("Articles per category", 1, 10, 5)
+    trusted_only  = st.checkbox("Trusted sources only", value=True)
+    force_refresh = st.checkbox(
+        f"Force refresh (ignore {CACHE_TTL_MINUTES}-min cache)", value=False,
+        help=f"By default, results are reused for {CACHE_TTL_MINUTES} minutes to save API credits. "
+             "Tick this to always fetch fresh results.",
+    )
 
     st.markdown("---")
     st.markdown("### 🔬 How verification works")
@@ -981,7 +998,7 @@ if not selected_cats:
 #  Search button
 # ──────────────────────────────────────────────────────────────────────────────
 search_btn = st.button(
-    "🔍  Search & Verify Latest News via Claude  (last 24 h)",
+    "🔍  Search Latest News via Claude",
     use_container_width=True,
     type="primary",
 )
@@ -989,102 +1006,139 @@ search_btn = st.button(
 if search_btn or st.session_state.get("last_results"):
 
     if search_btn:
-        all_data:     dict[str, pd.DataFrame] = {}
-        raw_articles: dict[str, list[dict]]   = {}
+        # ── Cache check ───────────────────────────────────────────────────────
+        last_fetch = st.session_state.get("fetched_at")
+        use_cache  = (
+            last_fetch
+            and not force_refresh
+            and (datetime.now() - last_fetch).total_seconds() < CACHE_TTL_MINUTES * 60
+        )
 
-        total_cats = len(selected_cats)
+        if use_cache:
+            age_s   = (datetime.now() - last_fetch).total_seconds()
+            age_min = int(age_s // 60)
+            age_sec = int(age_s % 60)
+            st.info(
+                f"⚡ Showing cached results from **{age_min}m {age_sec}s ago** "
+                f"(cache valid for {CACHE_TTL_MINUTES} min). "
+                f"Tick **'Force refresh'** in the sidebar to fetch fresh data."
+            )
 
-        # ── progress UI ───────────────────────────────────────────────────────
-        # Each category has 2 sub-steps (search + verify) → total steps = cats × 2
-        progress = st.progress(0, text="Starting…")
-        status   = st.empty()
+        else:
+            # ── Fresh fetch ───────────────────────────────────────────────────
+            all_data:     dict[str, pd.DataFrame] = {}
+            raw_articles: dict[str, list[dict]]   = {}
 
-        # Inter-category pause: space out API calls to stay under rate limits.
-        # With 12 categories × 2 passes = 24 calls, a 6 s gap between categories
-        # keeps the request rate well below the per-minute API threshold.
-        INTER_CAT_PAUSE   = 6   # seconds between categories
-        INTER_PASS_PAUSE  = 3   # seconds between Pass 1 → Pass 2 within a category
+            total_cats = len(selected_cats)
 
-        # Cross-category deduplication: track every URL and title already assigned
-        seen_urls:   set[str] = set()
-        seen_titles: set[str] = set()
+            progress = st.progress(0, text="Starting…")
+            status   = st.empty()
 
-        for i, cat in enumerate(selected_cats):
-            icon = CATEGORY_ICONS.get(cat, "📌")
-            base_pct = i / total_cats   # fraction at start of this category
+            INTER_CAT_PAUSE  = 6   # seconds between categories
+            INTER_PASS_PAUSE = 3   # seconds between Pass 1 → Pass 2
 
-            # Pause before every category except the first
-            if i > 0:
+            seen_urls:   set[str] = set()
+            seen_titles: set[str] = set()
+
+            for i, cat in enumerate(selected_cats):
+                icon     = CATEGORY_ICONS.get(cat, "📌")
+                base_pct = i / total_cats
+
+                if i > 0:
+                    status.markdown(
+                        f"⏱️ Pausing {INTER_CAT_PAUSE}s before next category…",
+                        unsafe_allow_html=True,
+                    )
+                    time.sleep(INTER_CAT_PAUSE)
+
+                # ── PASS 1: Search ────────────────────────────────────────────
                 status.markdown(
-                    f"⏱️ Pausing {INTER_CAT_PAUSE}s before next category…",
-                    unsafe_allow_html=True,
-                )
-                time.sleep(INTER_CAT_PAUSE)
-
-            # ── PASS 1: Search ────────────────────────────────────────────────
-            status.markdown(
-                f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
-                f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
-                unsafe_allow_html=True,
-            )
-            progress.progress(
-                base_pct + 0.0 / total_cats,
-                text=f"Pass 1 – Searching: {cat}…",
-            )
-
-            articles = fetch_news_with_search(
-                category        = cat,
-                claude_api_key  = claude_api_key,
-                n               = max_per_cat,
-                trusted_only    = trusted_only,
-                keywords        = category_keywords.get(cat, []),
-                excluded_urls   = seen_urls,
-                excluded_titles = seen_titles,
-            )
-
-            # Post-fetch safety filter: drop any article already seen in a prior category
-            articles = [
-                a for a in articles
-                if a.get("url",   "").strip() not in seen_urls
-                and a.get("title", "").strip() not in seen_titles
-            ]
-
-            # Register this category's articles so future categories won't repeat them
-            for a in articles:
-                if a.get("url"):
-                    seen_urls.add(a["url"].strip())
-                if a.get("title"):
-                    seen_titles.add(a["title"].strip())
-
-            # ── PASS 2: Verify ────────────────────────────────────────────────
-            if articles:
-                time.sleep(INTER_PASS_PAUSE)   # brief gap between Pass 1 and Pass 2
-                status.markdown(
-                    f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
-                    f'🔬 Cross-checking <b>{len(articles)}</b> articles in <b>{icon} {cat}</b>…',
+                    f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
+                    f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
                     unsafe_allow_html=True,
                 )
                 progress.progress(
-                    base_pct + 0.5 / total_cats,
-                    text=f"Pass 2 – Verifying: {cat}…",
+                    base_pct,
+                    text=f"Pass 1 – Searching: {cat}…",
                 )
-                articles = verify_articles(articles, cat, claude_api_key)
 
-            progress.progress(
-                (i + 1) / total_cats,
-                text=f"Done: {cat}",
-            )
+                articles = fetch_news_with_search(
+                    category       = cat,
+                    claude_api_key = claude_api_key,
+                    n              = max_per_cat,
+                    trusted_only   = trusted_only,
+                    keywords       = category_keywords.get(cat, []),
+                    excluded_urls  = seen_urls,
+                    excluded_titles= seen_titles,
+                    fill_hours     = 48,   # prefer 24h; fill from up to 48h
+                )
 
-            raw_articles[cat] = articles
-            df = articles_to_df(articles, cat)
-            if not df.empty:
-                all_data[cat] = df
+                # ── Auto-fallback if still empty ──────────────────────────────
+                # (rare — the prompt already fills from 48h; this catches genuine
+                #  dry spells by widening to 5 days with all source filters relaxed)
+                if not articles:
+                    status.markdown(
+                        f'<span class="pass-label pass-1">PASS 1 · RETRY</span>'
+                        f'🔄 No results — retrying <b>{icon} {cat}</b> with extended window…',
+                        unsafe_allow_html=True,
+                    )
+                    articles = fetch_news_with_search(
+                        category       = cat,
+                        claude_api_key = claude_api_key,
+                        n              = max_per_cat,
+                        trusted_only   = False,   # open up source filter
+                        keywords       = [],      # drop keyword restriction
+                        excluded_urls  = seen_urls,
+                        excluded_titles= seen_titles,
+                        fill_hours     = 120,     # fill from up to 5 days
+                    )
+                    for a in articles:
+                        a["fallback"] = True   # flag so card can show a note
 
-        progress.empty()
-        status.empty()
+                # Post-fetch dedup filter
+                articles = [
+                    a for a in articles
+                    if a.get("url",   "").strip() not in seen_urls
+                    and a.get("title", "").strip() not in seen_titles
+                ]
 
-        st.session_state["last_results"] = all_data
-        st.session_state["last_raw"]     = raw_articles
+                for a in articles:
+                    if a.get("url"):
+                        seen_urls.add(a["url"].strip())
+                    if a.get("title"):
+                        seen_titles.add(a["title"].strip())
+
+                # ── PASS 2: Verify (optional) ─────────────────────────────────
+                if articles:
+                    time.sleep(INTER_PASS_PAUSE)
+                    status.markdown(
+                        f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
+                        f'🔬 Cross-checking <b>{len(articles)}</b> articles in '
+                        f'<b>{icon} {cat}</b>…',
+                        unsafe_allow_html=True,
+                    )
+                    progress.progress(
+                        base_pct + 0.5 / total_cats,
+                        text=f"Pass 2 – Verifying: {cat}…",
+                    )
+                    articles = verify_articles(articles, cat, claude_api_key)
+
+                progress.progress(
+                    (i + 1) / total_cats,
+                    text=f"Done: {cat}",
+                )
+
+                raw_articles[cat] = articles
+                df = articles_to_df(articles, cat)
+                if not df.empty:
+                    all_data[cat] = df
+
+            progress.empty()
+            status.empty()
+
+            st.session_state["last_results"] = all_data
+            st.session_state["last_raw"]     = raw_articles
+            st.session_state["fetched_at"]   = datetime.now()
 
     # ── Restore from session ──────────────────────────────────────────────────
     all_data     = st.session_state.get("last_results", {})
@@ -1177,8 +1231,9 @@ if search_btn or st.session_state.get("last_results"):
                 summary = art.get("summary",        "")
                 trusted = art.get("trusted",        False)
                 v_score  = art.get("verified_score",  -1)
-                v_status = art.get("verified_status", "skipped")
-                v_note   = art.get("verified_note",   "")
+                v_status  = art.get("verified_status", "skipped")
+                v_note    = art.get("verified_note",   "")
+                is_fallback = art.get("fallback", False)
 
                 age_str    = format_age(pub)
                 trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
@@ -1190,10 +1245,12 @@ if search_btn or st.session_state.get("last_results"):
                 stale_html = ""
                 if pub and not is_within_24h(pub):
                     stale_html = (
-                        "<div style='font-size:.75rem;color:#b45309;background:#fef3c7;"
-                        "border:1px solid #fde68a;border-radius:5px;padding:.3rem .6rem;"
-                        "margin:.4rem 0;'>⚠️ <b>Outside 24h window</b> — "
-                        f"published {pub[:10]}</div>"
+                        "<div style='font-size:.85rem;font-weight:700;color:#7c2d12;"
+                        "background:#fff7ed;border-left:5px solid #ea580c;"
+                        "border-radius:6px;padding:.55rem .85rem;margin-bottom:.6rem;"
+                        "display:flex;align-items:center;gap:.5rem;'>"
+                        "⚠️ <span>Article outside 24h window — published "
+                        f"<u>{pub[:10]}</u>. Shown as fallback because nothing more recent was found.</span></div>"
                     )
 
                 clean_summary = strip_html_tags(summary)
@@ -1222,6 +1279,7 @@ if search_btn or st.session_state.get("last_results"):
 
                 st.markdown(f"""
                 <div class="news-card {card_cls}">
+                    {stale_html}
                     <p class="headline">{title}</p>
                     <div class="meta">
                         {source_badge}
@@ -1229,8 +1287,8 @@ if search_btn or st.session_state.get("last_results"):
                         <span class="badge badge-time">🕐 {age_str}</span>
                         <span class="badge {trust_cls}">{trust_lbl}</span>
                         <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
+                        {"<span class='badge badge-verify-skip'>🔄 Extended search</span>" if is_fallback else ""}
                     </div>
-                    {stale_html}
                     {summary_html}
                     {read_link}
                 </div>
