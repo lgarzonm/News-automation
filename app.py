@@ -271,12 +271,13 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "The Intermediary", "Alternative Credit Investor",
     ],
     "Fintech": [
-        "Fintech News Singapore", "e27", "Deal Street Asia", "Tech in Asia",
+        "Fintech News Singapore", "Fintech Magazine", "e27", "Deal Street Asia", "Tech in Asia",
         "TechCrunch", "Bloomberg", "Reuters", "The Business Times", "Business Times",
         "Channel NewsAsia", "CNA", "Finextra", "Payments Dive",
         "Asian Banking & Finance", "The Fintech Times", "Digital Banker",
         "Singapore Business Review", "Data Economy", "Meyka",
         "Fintech Futures", "Fintech Global",
+        "Nikkei Asia", "South China Morning Post", "Manila Bulletin",
     ],
     "Start-up": [
         "e27", "Tech in Asia", "Deal Street Asia", "TechCrunch",
@@ -317,7 +318,7 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Regional":            "Asia APAC Southeast Asia geopolitical economy trade deal Singapore Indonesia Malaysia Philippines India Japan news today",
     "Country Credit":      "sovereign credit rating Moody's S&P Fitch upgrade downgrade outlook government bonds fiscal banking credit news today",
     "Alternative Lending": "private credit alternative lending securitization real estate credit APAC Asia direct lending fund global news today",
-    "Fintech":             "fintech digital banking payments neobank crypto BNPL digital payment growth APAC Asia global news today",
+    "Fintech":             "fintech digital banking payments neobank embedded finance AI agent payment crypto BNPL digital payment growth Singapore APAC Asia global news today",
     "Start-up":            "startup funding venture capital VC PE AI unicorn valuation round APAC Asia global deep tech news today",
     "Sustainable Finance": "sustainable finance ESG green bond carbon net zero climate transition Asia global corporate news today",
     "Marketing":           "marketing advertising brand campaign sports partnership AI agency digital transformation news today",
@@ -681,7 +682,7 @@ def _run_claude_agentic_loop(
     client   = anthropic.Anthropic(api_key=claude_api_key)
     messages = [{"role": "user", "content": prompt}]
 
-    kwargs: dict = dict(model=model, max_tokens=1500, messages=messages)
+    kwargs: dict = dict(model=model, max_tokens=4000, messages=messages)
     if tools:
         kwargs["tools"] = tools
 
@@ -748,7 +749,7 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
             )
             articles = _extract_json_array(raw)
 
