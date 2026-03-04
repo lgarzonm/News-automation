@@ -11,6 +11,7 @@ Single-pass pipeline:
 Only ONE API key needed: your Anthropic (Claude) key.
 """
 
+import html as html_mod
 import json
 import re
 import time
@@ -1149,8 +1150,8 @@ if search_btn or st.session_state.get("last_results"):
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
             for art in articles:
-                title   = art.get("title",          "No title")
-                source  = art.get("source",         "Unknown")
+                title   = html_mod.escape(art.get("title",   "No title"))
+                source  = html_mod.escape(art.get("source",  "Unknown"))
                 url     = art.get("url",            "#")
                 pub     = art.get("published",      "")
                 summary = art.get("summary",        "")
@@ -1178,12 +1179,12 @@ if search_btn or st.session_state.get("last_results"):
                         f"<u>{pub[:10]}</u>. Shown as fallback because nothing more recent was found.</span></div>"
                     )
 
-                clean_summary = strip_html_tags(summary)
+                clean_summary = html_mod.escape(strip_html_tags(summary))
                 summary_html = (
                     f"<p class='summary-text'>{clean_summary}</p>"
                 ) if clean_summary else ""
 
-                clean_note = strip_html_tags(v_note)
+                clean_note = html_mod.escape(strip_html_tags(v_note))
                 note_html  = (
                     f"<div class='verify-note'>🔍 {clean_note}</div>"
                 ) if clean_note else ""
