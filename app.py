@@ -145,7 +145,7 @@ st.markdown("""
     .summary-text {
         color: #374151; font-size: .875rem; line-height: 1.5;
         margin: .65rem 0 .5rem 0;
-        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
         overflow: hidden;
     }
 
@@ -602,7 +602,7 @@ Each item must have these fields:
   "source"          : name of the news outlet (string)
   "published"       : publication ISO datetime, e.g. "2026-02-22T14:30:00Z" (string)
   "url"             : the real, full URL — MUST be a working link you found (string)
-  "summary"         : your 1-2 sentence summary of the story (string)
+  "summary"         : factual 1-2 sentence summary of the article content ONLY — no disclaimers, no caveats, no verification notes (string)
   "trusted"         : true if the source is in [{trusted_str}], else false (boolean)
   "verified_score"  : int 0-100 — your confidence this article is credible and real
   "verified_status" : "confirmed" | "partial" | "unconfirmed"
@@ -822,6 +822,23 @@ def is_within_24h(pub: str) -> bool:
         return True   # if we can't parse, keep the article (don't silently drop)
 
 
+# Hard ceiling: regardless of what Claude returns, never show articles older than this.
+# The prompt allows up to 5-day fallback — 7 days gives a safe buffer while
+# preventing months-old content (e.g. research reports) from slipping through.
+MAX_ARTICLE_AGE_DAYS = 7
+
+
+def _within_max_age(pub: str) -> bool:
+    """Return True if the article is within MAX_ARTICLE_AGE_DAYS."""
+    try:
+        clean = pub[:19].replace("Z", "")
+        dt  = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        return 0 <= age.total_seconds() <= MAX_ARTICLE_AGE_DAYS * 86400
+    except Exception:
+        return True   # unparseable date — keep the article, don't silently drop
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Sidebar
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1014,6 +1031,10 @@ if search_btn or st.session_state.get("last_results"):
                     for a in articles:
                         a["fallback"] = True   # flag so card can show a note
 
+                # Hard date cap — drop anything older than MAX_ARTICLE_AGE_DAYS
+                # regardless of what Claude returned (prevents months-old content)
+                articles = [a for a in articles if _within_max_age(a.get("published", ""))]
+
                 # Post-fetch dedup filter
                 articles = [
                     a for a in articles
@@ -1141,7 +1162,7 @@ if search_btn or st.session_state.get("last_results"):
 
                 age_str    = format_age(pub)
                 trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
-                trust_lbl  = "✅ Trusted"       if trusted else "⚠️ Unverified"
+                trust_lbl  = "✅ Listed source" if trusted else "📰 Unlisted source"
 
                 card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status, trusted_only)
 
@@ -1161,6 +1182,11 @@ if search_btn or st.session_state.get("last_results"):
                 summary_html = (
                     f"<p class='summary-text'>{clean_summary}</p>"
                 ) if clean_summary else ""
+
+                clean_note = strip_html_tags(v_note)
+                note_html  = (
+                    f"<div class='verify-note'>🔍 {clean_note}</div>"
+                ) if clean_note else ""
 
                 # Sanitise URL: strip quotes and whitespace that break inline HTML
                 safe_url = url.strip().replace('"', '%22').replace("'", '%27')
@@ -1194,6 +1220,7 @@ if search_btn or st.session_state.get("last_results"):
                         {"<span class='badge badge-verify-skip'>🔄 Extended search</span>" if is_fallback else ""}
                     </div>
                     {summary_html}
+                    {note_html}
                     {read_link}
                 </div>
                 """, unsafe_allow_html=True)
