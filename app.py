@@ -3,10 +3,10 @@
 ─────────────────
 Uses Claude with the built-in `web_search` tool (Anthropic API).
 
-Two-pass pipeline:
-  Pass 1 – Claude searches the live web for real news (last 24 h).
-  Pass 2 – A second independent Claude call re-searches and verifies
-            every article before it is shown to the user.
+Single-pass pipeline:
+  Claude searches the live web for real news (last 24 h) and simultaneously
+  self-assesses each article's credibility — source reputation, headline
+  plausibility, and recency — returning a verified_score (0-100) inline.
 
 Only ONE API key needed: your Anthropic (Claude) key.
 """
@@ -104,7 +104,6 @@ st.markdown("""
         margin-right: .4rem;
     }
     .pass-1 { background: #dbeafe; color: #1e40af; }
-    .pass-2 { background: #ede9fe; color: #4c1d95; }
 
     .news-card a { font-size: .8rem; color: #2563eb; text-decoration: none; }
     .news-card a:hover { text-decoration: underline; }
@@ -429,8 +428,7 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
     ),
 }
 
-SEARCH_MODEL = "claude-haiku-4-5-20251001"   # Pass 1 — web search (cheap, fast)
-VERIFY_MODEL = "claude-haiku-4-5-20251001"   # Pass 2 — reasoning only (no web search)
+MODEL = "claude-haiku-4-5-20251001"
 
 # Verification confidence thresholds
 VERIFY_HIGH   = 75   # score ≥ 75  → confirmed ✅
@@ -552,12 +550,20 @@ PUBLICATION DATE RULES — follow strictly in this order:
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
-  "title"     : exact headline from the article (string)
-  "source"    : name of the news outlet (string)
-  "published" : publication ISO datetime of the article, e.g. "2026-02-22T14:30:00Z" (string)
-  "url"       : the real, full URL of the article — MUST be a working link you found (string)
-  "summary"   : your 1-2 sentence summary of the story (string)
-  "trusted"   : true if the source is in [{trusted_str}], else false (boolean)
+  "title"           : exact headline from the article (string)
+  "source"          : name of the news outlet (string)
+  "published"       : publication ISO datetime, e.g. "2026-02-22T14:30:00Z" (string)
+  "url"             : the real, full URL — MUST be a working link you found (string)
+  "summary"         : your 1-2 sentence summary of the story (string)
+  "trusted"         : true if the source is in [{trusted_str}], else false (boolean)
+  "verified_score"  : int 0-100 — your confidence this article is credible and real
+  "verified_status" : "confirmed" | "partial" | "unconfirmed"
+  "verified_note"   : 1 sentence explaining your confidence rating (string)
+
+Confidence scoring guide for verified_score:
+  75-100 : reputable outlet + specific factual headline + concrete details + within 24h
+  45-74  : minor concern — lesser-known source OR article is from the fill window (>24h)
+  0-44   : unknown/unreliable source, vague or clickbait headline, inconsistent details
 
 OTHER RULES:
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
@@ -568,135 +574,13 @@ OTHER RULES:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  PASS 2 – Verify
-# ──────────────────────────────────────────────────────────────────────────────
-
-def verify_articles(
-    articles: list[dict],
-    category: str,
-    claude_api_key: str,
-) -> list[dict]:
-    """
-    Pass 2: A lightweight reasoning-only call (no web search) that evaluates
-    each article from Pass 1 on source reputation, headline plausibility,
-    summary coherence, and recency.
-
-    For each article it returns:
-      "verified_score"  : int 0-100  (confidence the story is credible)
-      "verified_status" : "confirmed" | "partial" | "unconfirmed"
-      "verified_note"   : short explanation of the assessment
-      "corrected_summary": optionally improved summary (or same as original)
-    """
-    if not articles:
-        return articles
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    # Build a compact list for the prompt
-    articles_json = json.dumps(
-        [{"idx": i, "title": a.get("title",""), "source": a.get("source",""),
-          "url": a.get("url",""), "summary": a.get("summary","")}
-         for i, a in enumerate(articles)],
-        ensure_ascii=False, indent=2
-    )
-
-    prompt = f"""Today is {today}. You are a fact-checking editor for the **{category}** category.
-
-Evaluate each article below using ONLY your internal knowledge and reasoning.
-Do NOT hallucinate — if you are unsure about a source or claim, score conservatively.
-
-Articles:
-{articles_json}
-
-For EACH article (by "idx"), evaluate these four signals:
-1. **Source reputation**: Is the source a well-known, credible outlet for {category}?
-   (Major wire services & established outlets → high; unknown or blog-like → low)
-2. **Headline plausibility**: Does the title describe a realistic, specific event?
-   (Concrete facts → high; vague clickbait or sensationalism → low)
-3. **Summary coherence**: Are the summary details internally consistent and specific?
-   (Named entities, dates, figures → high; generic filler → low)
-4. **Recency**: Does the published date fall within the last 48 hours?
-
-Scoring guide:
-  75-100  Reputable source + plausible headline + coherent summary + recent
-  45-74   Minor concerns on one signal (e.g. lesser-known source but plausible story)
-  0-44    Unknown source, implausible claims, or inconsistent details
-
-Return ONLY a raw JSON array (no markdown fences) with exactly {len(articles)} objects:
-  "idx"              : int — same index as input
-  "verified_score"   : int 0-100
-  "verified_status"  : "confirmed" | "partial" | "unconfirmed"
-  "verified_note"    : 1-2 sentences explaining your reasoning
-  "corrected_summary": improved summary, or the original if accurate
-"""
-
-    delays = [5, 15]
-    for attempt, delay in enumerate([0] + delays):
-        if delay:
-            time.sleep(delay)
-        try:
-            raw           = _run_claude_agentic_loop(
-                prompt, claude_api_key,
-                model=VERIFY_MODEL,
-                tools=None,            # no web search — pure reasoning
-            )
-            verifications = _extract_json_array(raw)
-
-            if verifications is None:
-                if attempt < len(delays):
-                    continue   # no JSON returned — retry
-                return _mark_verify_skipped(articles, "Verifier returned no JSON")
-            if not isinstance(verifications, list):
-                if attempt < len(delays):
-                    continue   # unexpected type — retry
-                return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
-
-            # Merge verification results back into article dicts
-            verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
-            enriched   = []
-            for i, art in enumerate(articles):
-                v     = verify_map.get(i, {})
-                cor_s = v.get("corrected_summary", "")
-                art   = dict(art)   # copy so we don't mutate original
-                art["verified_score"]  = int(v.get("verified_score",  0))
-                art["verified_status"] = v.get("verified_status", "unconfirmed")
-                art["verified_note"]   = v.get("verified_note",   "No verification note returned.")
-                if cor_s and cor_s != art.get("summary", ""):
-                    art["summary"] = cor_s
-                enriched.append(art)
-
-            return enriched
-
-        except anthropic.RateLimitError:
-            if attempt < len(delays):
-                continue
-            return _mark_verify_skipped(articles, "Rate limit reached during verification")
-        except Exception as e:
-            return _mark_verify_skipped(articles, f"Verification error: {e}")
-
-    return _mark_verify_skipped(articles, "Rate limit reached during verification")
-
-
-def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
-    """Attach a 'skipped' verification marker to every article."""
-    out = []
-    for art in articles:
-        art = dict(art)
-        art["verified_score"]  = -1
-        art["verified_status"] = "skipped"
-        art["verified_note"]   = reason
-        out.append(art)
-    return out
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 #  Shared Claude agentic-loop helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _run_claude_agentic_loop(
     prompt: str,
     claude_api_key: str,
-    model: str = SEARCH_MODEL,
+    model: str = MODEL,
     tools: list[dict] | None = None,
 ) -> str:
     """
@@ -757,8 +641,8 @@ def _run_claude_search(
         try:
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
-                model=SEARCH_MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                model=MODEL,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
             )
             articles = _extract_json_array(raw)
 
@@ -945,21 +829,21 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("### 🔬 How verification works")
+    st.markdown("### 🔬 How it works")
     st.markdown("""
-**Two-pass pipeline:**
+**Single-pass pipeline:**
 
-**Pass 1 · Search** — Claude searches the live web and finds the latest news for each category.
+Claude searches the live web for each category and simultaneously self-assesses every article it finds:
+- Source reputation (major outlet vs unknown)
+- Headline plausibility (specific facts vs clickbait)
+- Recency (within 24h vs fallback window)
 
-**Pass 2 · Verify** — A second independent Claude call re-searches the web to cross-check every article:
-- Confirms the story is real and recent
-- Checks headline & key facts
-- Scores confidence **0 – 100**:
+**Confidence score 0 – 100:**
   - 🟢 **≥ 75** Confirmed
   - 🟡 **45–74** Partially confirmed
   - 🔴 **< 45** Unconfirmed
 
-*Most categories focus on **Asia · APAC · SEA**. Regional includes global geopolitical events. Sustainable Finance and Marketing have global coverage.*
+*Most categories: **Asia · APAC · SEA** focus. Sustainable Finance and Marketing are global.*
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -969,9 +853,7 @@ st.markdown("""
 <div class="app-header">
     <h1>📰 24h News Explorer</h1>
     <p>
-        <span style="opacity:.8">Pass 1: Claude searches the web</span>
-        &nbsp;·&nbsp;
-        <span style="opacity:.8">Pass 2: Independent verification</span>
+        <span style="opacity:.8">Claude searches the web &amp; self-verifies each article</span>
         &nbsp;·&nbsp;
         Asia · APAC · SEA focus
         &nbsp;·&nbsp;
@@ -1034,9 +916,6 @@ if search_btn or st.session_state.get("last_results"):
             progress = st.progress(0, text="Starting…")
             status   = st.empty()
 
-            INTER_CAT_PAUSE  = 6   # seconds between categories
-            INTER_PASS_PAUSE = 3   # seconds between Pass 1 → Pass 2
-
             seen_urls:   set[str] = set()
             seen_titles: set[str] = set()
 
@@ -1044,22 +923,14 @@ if search_btn or st.session_state.get("last_results"):
                 icon     = CATEGORY_ICONS.get(cat, "📌")
                 base_pct = i / total_cats
 
-                if i > 0:
-                    status.markdown(
-                        f"⏱️ Pausing {INTER_CAT_PAUSE}s before next category…",
-                        unsafe_allow_html=True,
-                    )
-                    time.sleep(INTER_CAT_PAUSE)
-
-                # ── PASS 1: Search ────────────────────────────────────────────
+                # ── Search ────────────────────────────────────────────────────
                 status.markdown(
-                    f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
-                    f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
+                    f'🌐 Searching <b>{icon} {cat}</b>…',
                     unsafe_allow_html=True,
                 )
                 progress.progress(
                     base_pct,
-                    text=f"Pass 1 – Searching: {cat}…",
+                    text=f"Searching: {cat}…",
                 )
 
                 articles = fetch_news_with_search(
@@ -1108,21 +979,6 @@ if search_btn or st.session_state.get("last_results"):
                     if a.get("title"):
                         seen_titles.add(a["title"].strip())
 
-                # ── PASS 2: Verify (optional) ─────────────────────────────────
-                if articles:
-                    time.sleep(INTER_PASS_PAUSE)
-                    status.markdown(
-                        f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
-                        f'🔬 Cross-checking <b>{len(articles)}</b> articles in '
-                        f'<b>{icon} {cat}</b>…',
-                        unsafe_allow_html=True,
-                    )
-                    progress.progress(
-                        base_pct + 0.5 / total_cats,
-                        text=f"Pass 2 – Verifying: {cat}…",
-                    )
-                    articles = verify_articles(articles, cat, claude_api_key)
-
                 progress.progress(
                     (i + 1) / total_cats,
                     text=f"Done: {cat}",
@@ -1168,7 +1024,7 @@ if search_btn or st.session_state.get("last_results"):
         </div>
         <div class="metric-card">
             <div class="value" style="color:#16a34a">{confirmed_n}</div>
-            <div class="label">✅ Verified (Pass 2)</div>
+            <div class="label">✅ Verified</div>
         </div>
         <div class="metric-card">
             <div class="value">{cats_found}</div>
