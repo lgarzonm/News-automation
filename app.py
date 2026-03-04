@@ -594,7 +594,7 @@ PUBLICATION DATE RULES — follow strictly in this order:
 2. FILL WINDOW (fallback): if the last 24 h yields fewer than {n} articles, extend your search
    back to {cutoff_fill_str} (last {fill_hours} h) to fill the remaining slots.
    Only use older articles to top up — always prefer the most recent ones available.
-3. NEVER return an empty array — there is always relevant {category} news to be found.
+3. If you genuinely cannot find any real articles, return an empty JSON array [] — the system will automatically retry with a wider window. Do NOT fabricate or invent articles.
 4. Every article must have a real, verifiable publication date.
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
@@ -667,10 +667,26 @@ def _extract_json_array(raw: str) -> list | None:
     Returns the parsed list, or None if no array was found."""
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
     raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE).strip()
-    match = re.search(r"\[.*\]", raw, re.DOTALL)
-    if not match:
+    # Find the first '[' and the matching closing ']' by counting brackets,
+    # rather than using a greedy/non-greedy regex that can over- or under-match.
+    start = raw.find("[")
+    if start == -1:
         return None
-    return json.loads(match.group())
+    depth, end = 0, -1
+    for i, ch in enumerate(raw[start:], start):
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        return None
+    try:
+        return json.loads(raw[start : end + 1])
+    except json.JSONDecodeError:
+        return None
 
 
 def _run_claude_search(
@@ -1044,8 +1060,9 @@ if search_btn or st.session_state.get("last_results"):
                 ]
 
                 for a in articles:
-                    if a.get("url"):
-                        seen_urls.add(a["url"].strip())
+                    u = str(a.get("url") or "").strip()
+                    if u and u != "#":          # don't treat missing-URL placeholder as a real URL
+                        seen_urls.add(u)
                     if a.get("title"):
                         seen_titles.add(a["title"].strip())
 
@@ -1150,16 +1167,20 @@ if search_btn or st.session_state.get("last_results"):
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
             for art in articles:
-                title   = html_mod.escape(art.get("title",   "No title"))
-                source  = html_mod.escape(art.get("source",  "Unknown"))
-                url     = art.get("url",            "#")
-                pub     = art.get("published",      "")
-                summary = art.get("summary",        "")
-                trusted = art.get("trusted",        False)
-                v_score  = art.get("verified_score",  -1)
-                v_status  = art.get("verified_status", "skipped")
-                v_note    = art.get("verified_note",   "")
-                is_fallback = art.get("fallback", False)
+                title   = html_mod.escape(str(art.get("title")   or "No title"))
+                source  = html_mod.escape(str(art.get("source")  or "Unknown"))
+                url     = str(art.get("url") or "#").strip()
+                pub     = str(art.get("published") or "")
+                summary = str(art.get("summary")   or "")
+                trusted = bool(art.get("trusted",  False))
+                # verified_score: Claude may return a string — coerce safely
+                try:
+                    v_score = int(art.get("verified_score", -1))
+                except (TypeError, ValueError):
+                    v_score = -1
+                v_status    = str(art.get("verified_status") or "skipped")
+                v_note      = str(art.get("verified_note")   or "")
+                is_fallback = bool(art.get("fallback", False))
 
                 age_str    = format_age(pub)
                 trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
@@ -1189,8 +1210,10 @@ if search_btn or st.session_state.get("last_results"):
                     f"<div class='verify-note'>🔍 {clean_note}</div>"
                 ) if clean_note else ""
 
-                # Sanitise URL: strip quotes and whitespace that break inline HTML
-                safe_url = url.strip().replace('"', '%22').replace("'", '%27')
+                # Sanitise URL for use inside a single-quoted HTML attribute:
+                # html.escape handles & → &amp; (required in HTML attrs),
+                # then we URL-encode ' so it can't break the attribute boundary.
+                safe_url = html_mod.escape(url, quote=False).replace("'", "%27")
 
                 # Source badge — clickable link
                 source_badge = (
@@ -1208,20 +1231,29 @@ if search_btn or st.session_state.get("last_results"):
                     f"🔗 Read full article →</a>"
                 )
 
-                st.markdown(f"""
-                <div class="news-card {card_cls}">
-                    {stale_html}
-                    <p class="headline">{title}</p>
-                    <div class="meta">
-                        {source_badge}
-                        <span class="badge badge-cat">{icon} {cat}</span>
-                        <span class="badge badge-time">🕐 {age_str}</span>
-                        <span class="badge {trust_cls}">{trust_lbl}</span>
-                        <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
-                        {"<span class='badge badge-verify-skip'>🔄 Extended search</span>" if is_fallback else ""}
-                    </div>
-                    {summary_html}
-                    {note_html}
-                    {read_link}
-                </div>
-                """, unsafe_allow_html=True)
+                # Build card as a single concatenated string — NO blank lines.
+                # Streamlit's CommonMark parser ends an HTML block the moment it
+                # sees a blank line, so any empty interpolated variable (e.g. note_html="")
+                # in a multi-line f-string would split the block and show raw HTML.
+                fallback_badge = (
+                    "<span class='badge badge-verify-skip'>🔄 Extended search</span>"
+                    if is_fallback else ""
+                )
+                card_html = (
+                    f'<div class="news-card {card_cls}">'
+                    + stale_html
+                    + f'<p class="headline">{title}</p>'
+                    + f'<div class="meta">'
+                    + source_badge
+                    + f'<span class="badge badge-cat">{icon} {cat}</span>'
+                    + f'<span class="badge badge-time">🕐 {age_str}</span>'
+                    + f'<span class="badge {trust_cls}">{trust_lbl}</span>'
+                    + f'<span class="badge {v_badge_cls}">{v_badge_lbl}</span>'
+                    + fallback_badge
+                    + '</div>'
+                    + summary_html
+                    + note_html
+                    + read_link
+                    + '</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
