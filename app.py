@@ -3,14 +3,15 @@
 ─────────────────
 Uses Claude with the built-in `web_search` tool (Anthropic API).
 
-Two-pass pipeline:
-  Pass 1 – Claude searches the live web for real news (last 24 h).
-  Pass 2 – A second independent Claude call re-searches and verifies
-            every article before it is shown to the user.
+Single-pass pipeline:
+  Claude searches the live web for real news (last 24 h) and simultaneously
+  self-assesses each article's credibility — source reputation, headline
+  plausibility, and recency — returning a verified_score (0-100) inline.
 
 Only ONE API key needed: your Anthropic (Claude) key.
 """
 
+import html as html_mod
 import json
 import re
 import time
@@ -104,7 +105,6 @@ st.markdown("""
         margin-right: .4rem;
     }
     .pass-1 { background: #dbeafe; color: #1e40af; }
-    .pass-2 { background: #ede9fe; color: #4c1d95; }
 
     .news-card a { font-size: .8rem; color: #2563eb; text-decoration: none; }
     .news-card a:hover { text-decoration: underline; }
@@ -146,7 +146,7 @@ st.markdown("""
     .summary-text {
         color: #374151; font-size: .875rem; line-height: 1.5;
         margin: .65rem 0 .5rem 0;
-        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
         overflow: hidden;
     }
 
@@ -226,20 +226,23 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
     "Stocks": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "Nikkei Asia", "South China Morning Post", "The Straits Times",
-        "Business Times Singapore", "Business Times", "Seeking Alpha",
+        "The Business Times", "Business Times Singapore", "Seeking Alpha",
         "Investor's Business Daily", "Barron's", "MarketWatch", "Yahoo Finance",
+        "Japan Wire by Kyodo News", "Analytics Insight",
     ],
     "Fiats": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "FX Street", "Investopedia", "Nikkei Asia",
         "South China Morning Post", "MAS (Monetary Authority of Singapore)",
         "Barron's", "MarketWatch", "FX Empire",
+        "Convera", "The Edge Singapore", "Currency News", "The Guardian",
     ],
     "Indexes": [
         "Bloomberg", "Reuters", "Financial Times", "CNBC",
         "Nikkei Asia", "South China Morning Post", "Business Times Singapore",
         "The Straits Times", "Morningstar", "S&P Global",
         "MarketWatch", "Barron's", "Yahoo Finance",
+        "TradingView", "Japan Wire by Kyodo News",
     ],
     "Regional": [
         "Nikkei Asia", "South China Morning Post", "The Straits Times",
@@ -247,116 +250,150 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Vietnam News", "Reuters", "Bloomberg", "Channel NewsAsia (CNA)",
         "The Guardian", "BBC", "Associated Press", "Al Jazeera",
         "Financial Times", "Wall Street Journal",
+        "The Malay Mail", "YICAI Global", "Asian News Network",
+        "Japan Wire by Kyodo News", "Korea JoongAng Daily",
     ],
     "Country Credit": [
         "Bloomberg", "Reuters", "Financial Times", "Moody's",
         "S&P Global", "Fitch Ratings", "The Straits Times",
         "Nikkei Asia", "South China Morning Post", "Asian Development Bank",
-        "Vietnam News", "Bangkok Post", "The Jakarta Post",
+        "Vietnam News", "Bangkok Post", "The Jakarta Post", "SeeNews",
     ],
     "Alternative Lending": [
         "Bloomberg", "Reuters", "Financial Times", "Fintech News Singapore", "e27",
         "Deal Street Asia", "Tech in Asia", "The Business Times",
         "Crowdfund Insider", "Lending Times", "AltFi",
         "Private Debt Investor", "Institutional Investor",
+        "Yahoo Finance", "Global Trade Review",
+        "The Intermediary", "Alternative Credit Investor",
     ],
     "Fintech": [
-        "Fintech News Singapore", "e27", "Deal Street Asia", "Tech in Asia",
+        "Fintech News Singapore", "Fintech News SG", "e27", "Deal Street Asia", "Tech in Asia",
         "TechCrunch", "Bloomberg", "Reuters", "The Business Times",
         "Channel NewsAsia (CNA)", "Fintechnews.sg",
         "Fintech Futures", "Fintech Global", "Finextra", "Payments Dive",
+        "Fintech Malaysia News", "Asian Banking & Finance",
+        "RetailNews Asia", "Retailer Banker International", "Bangkok Post",
     ],
     "Start-up": [
         "e27", "Tech in Asia", "Deal Street Asia", "TechCrunch",
         "Bloomberg", "Reuters", "Channel NewsAsia (CNA)",
         "The Straits Times", "KrASIA", "Vulcan Post",
         "Yahoo Finance", "Forbes", "Business Insider",
+        "YICAI Global", "Asian News Network", "Korea Tech Desk", "EU Startups",
     ],
     "Sustainable Finance": [
         "Bloomberg Green", "Reuters", "Financial Times", "The Straits Times",
         "Channel NewsAsia (CNA)", "Eco-Business", "MAS (Monetary Authority of Singapore)",
         "Asian Development Bank", "Carbon Brief", "GreenBiz",
         "Yahoo Finance", "CNBC", "Wall Street Journal", "S&P Global",
+        "Sustainability Magazine", "Sustainability Online", "Sustainability Network", "ESG News",
     ],
     "Marketing": [
         "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
         "The Drum", "Adweek", "South China Morning Post",
         "The Straits Times", "Channel NewsAsia (CNA)",
         "Marketing Week", "Ad Age", "Campaign ME", "Campaign",
+        "CNBC", "Campaignme", "Seafoam Media",
     ],
     "Entertainment": [
-        "The Straits Times", "CNA", "TODAY", "8Days", "Mothership",
+        "The Straits Times", "CNA", "TODAY", "8Days", "Mothership", "Mothership SG",
         "Time Out Singapore", "Visit Singapore", "The Smart Local",
         "Variety Asia", "South China Morning Post",
         "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
-        "Nikkei Asia", "Vulcan Post", "Time Out", "Time Out Singapore",
-        "Today Online", "Bandwagon",
+        "Nikkei Asia", "Vulcan Post", "Time Out",
+        "Today Online", "Bandwagon", "HungryGoWhere", "Sethlui.com",
     ],
 }
 
 CATEGORY_SEARCH_QUERIES: dict[str, str] = {
-    "Stocks":              "global stock market equities Wall Street Asia APAC news today",
-    "Fiats":               "forex currency exchange rates USD EUR JPY SGD AUD news today",
-    "Indexes":             "stock market index S&P 500 Dow Nasdaq Nikkei Hang Seng MSCI news today",
-    "Regional":            "global geopolitical macro economy Asia APAC Middle East news today",
-    "Country Credit":      "sovereign credit rating government bonds debt Asia APAC news today",
-    "Alternative Lending": "alternative lending private credit P2P non-bank financing news today",
-    "Fintech":             "fintech financial technology payments digital banking startup news today",
-    "Start-up":            "startup funding venture capital seed round Series A B news today",
-    "Sustainable Finance": "sustainable finance ESG green bonds climate infrastructure news today global",
-    "Marketing":           "marketing advertising brand campaigns media news today",
-    "Entertainment":       "Singapore entertainment events concerts movies music theatre arts news today",
+    "Stocks":              "stock market equities Asia APAC Singapore STI Kospi Wall Street geopolitical inflation news today",
+    "Fiats":               "forex currency USD SGD IDR yuan rupee PBOC MAS oil tariffs central bank exchange rate news today",
+    "Indexes":             "stock index S&P 500 Dow Nasdaq Nikkei STI Kospi Hang Seng market close daily recap news today",
+    "Regional":            "Asia APAC geopolitical economy trade policy China Japan India Southeast Asia news today",
+    "Country Credit":      "sovereign credit rating Moody's S&P Fitch upgrade downgrade government bonds debt news today",
+    "Alternative Lending": "alternative lending private credit SME direct lending insurance real estate fund global news today",
+    "Fintech":             "fintech AI digital banking payments Islamic fintech startup funding APAC Asia news today",
+    "Start-up":            "startup funding venture capital robotics biotech deep tech Asia Korea Vietnam news today",
+    "Sustainable Finance": "sustainable finance ESG corporate green bonds social bonds net zero regenerative agriculture climate news today global",
+    "Marketing":           "marketing advertising AI brand campaigns digital transformation agency news today",
+    "Entertainment":       "Singapore restaurant opening food dining events concerts arts lifestyle things to do news today",
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
     "Stocks": [
         "earnings", "profits", "stock rally", "stock drop", "guidance",
         "dividends", "buyback", "IPO", "valuation", "volatility",
+        "STI", "Kospi", "Nifty", "Sensex", "geopolitical", "inflation",
+        "war stocks", "market tumble", "Asian markets",
     ],
     "Fiats": [
         "dollar", "euro", "DXY", "currency", "FX",
         "exchange rate", "devaluation", "central bank", "rate hike", "inflation",
+        "SGD", "IDR", "rupee", "yuan", "PBOC", "MAS",
+        "tariffs", "oil-currency", "de-dollarization",
     ],
     "Indexes": [
         "S&P 500", "Nasdaq", "Dow", "Nikkei", "Hang Seng",
         "MSCI", "market rally", "market selloff", "futures", "ETF",
+        "STI", "Kospi", "market close", "daily recap", "tech sector",
+        "index levels", "geopolitical shock",
     ],
     "Regional": [
         "ASEAN", "Southeast Asia", "APAC", "Singapore economy", "Indonesia economy",
         "China stimulus", "Asia growth", "trade", "geopolitical", "conflict",
         "Middle East", "oil prices", "sanctions", "elections", "policy",
+        "India", "Japan innovation", "China AI", "DeepSeek", "ringgit",
+        "trade deal", "boycott", "activist pressure",
     ],
     "Country Credit": [
         "sovereign debt", "government bonds", "credit rating", "Moody's", "S&P rating",
         "Fitch", "default risk", "debt crisis", "fiscal deficit", "bond yields",
+        "upgrade", "downgrade", "outlook", "public debt", "rating action",
+        "Serbia", "Slovenia", "Vietnam credit", "emerging market debt",
     ],
     "Alternative Lending": [
         "private credit", "alternative lending", "SME loans", "non-bank lending", "asset-backed",
         "loan portfolio", "credit fund", "lending platform", "yield", "structured finance",
+        "Blackstone", "Blue Owl", "Ares", "KKR credit", "direct lending",
+        "trade finance", "fund flows", "outflows", "retail investors", "BDC",
+        "insurance private credit", "real estate credit", "private markets", "UK SME",
     ],
     "Fintech": [
         "fintech", "digital bank", "e-wallet", "payments", "BNPL",
         "digital lending", "open banking", "blockchain", "crypto", "financial inclusion",
+        "AI fintech", "Islamic fintech", "zakat", "fintech funding", "Series A fintech",
+        "fintech layoffs", "APAC fintech", "bank credit",
     ],
     "Start-up": [
         "startup funding", "venture capital", "Series A", "Series B", "unicorn",
         "valuation", "seed round", "acquisition", "IPO", "founder",
+        "robotics", "biotech", "deep tech", "female founder", "women founders",
+        "digital economy", "startup ecosystem", "Korea startup", "Vietnam startup",
     ],
     "Sustainable Finance": [
         "green bond", "ESG", "sustainability", "climate finance", "carbon",
         "net zero", "energy transition", "impact investing", "renewable energy", "climate policy",
         "green infrastructure", "sustainable capital", "climate bond", "transition finance",
+        "social bond", "social loan", "solar energy", "emissions", "net zero summit",
+        "REIT green", "bank sustainability milestone",
+        "regenerative agriculture", "corporate ESG", "corporate sustainability",
     ],
     "Marketing": [
         "branding", "advertising", "digital marketing", "campaign", "consumer",
         "product launch", "social media", "growth", "strategy", "market share",
+        "AI marketing", "marketing AI", "agency rebrand", "Instagram algorithm",
+        "marketing transformation", "luxury marketing", "news media",
     ],
     "Entertainment": [
         "Singapore concert", "Singapore festival", "Singapore arts", "Singapore theatre",
         "Singapore premiere", "Singapore exhibition", "local artist", "Singapore music",
         "concert", "festival", "movie", "streaming", "art exhibition",
         "theatre", "music", "K-pop", "anime", "gaming",
-        "Singapore events", "things to do", "weekend events",
+        "Singapore events", "things to do", "weekend events", "Time Out Singapore",
+        "restaurant opening Singapore", "food Singapore", "dining Singapore",
+        "Singapore food", "Jewel Changi", "Singapore lifestyle", "food festival Singapore",
+        "Singapore destination", "new restaurant", "Singapore Airshow",
     ],
 }
 
@@ -385,14 +422,20 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Do NOT include routine non-Asia stories just because they are geopolitical."
     ),
     "Country Credit": (
-        "Focus on sovereign and quasi-sovereign credit for Asian and APAC countries: "
+        "Primary focus: sovereign and quasi-sovereign credit for Asian and APAC countries — "
         "Singapore, China, Japan, South Korea, India, Indonesia, Malaysia, Thailand, "
-        "Philippines, Vietnam, Hong Kong, Australia, New Zealand."
+        "Philippines, Vietnam, Hong Kong, Australia, New Zealand. "
+        "Also include major rating actions globally (Eastern Europe, Latin America, Middle East) "
+        "when published by Moody's, S&P, or Fitch — these are relevant regardless of region."
     ),
     "Alternative Lending": (
-        "Focus on alternative lending, P2P finance, and digital credit in Asia, APAC "
-        "and SEA — especially Singapore, Indonesia, Malaysia, Thailand, Philippines, "
-        "Vietnam and China."
+        "Coverage is global — do NOT restrict to Asia. "
+        "Private credit and alternative lending are dominated by US and European fund managers "
+        "(Blackstone, Blue Owl, Ares, Apollo, KKR). Cover US, UK, and European alternative "
+        "lending and private credit news as primary. Also include Asia-Pacific stories "
+        "(Singapore, Indonesia, Malaysia, trade finance, SME lending) when available. "
+        "Insurance-linked private credit, real estate credit, and SME alternative finance "
+        "are all in scope regardless of geography."
     ),
     "Fintech": (
         "Focus on fintech, digital banking, payments, crypto-regulation and wealthtech "
@@ -400,9 +443,11 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Thailand, the Philippines, Vietnam, China, Japan and South Korea."
     ),
     "Start-up": (
-        "Focus on startup ecosystem news in Asia, APAC and SEA — especially "
+        "Primary focus: startup ecosystem news in Asia, APAC and SEA — especially "
         "Singapore, Indonesia, Malaysia, Thailand, Vietnam, Philippines, India, "
-        "Hong Kong and China."
+        "Hong Kong, China and South Korea. "
+        "Also include notable global startup stories (Europe, US) for deep-tech verticals "
+        "like robotics, biotech, and AI where the deal size or innovation angle is significant."
     ),
     "Sustainable Finance": (
         "Coverage should be global — include significant sustainable finance, ESG, "
@@ -413,24 +458,26 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Europe, or other regions."
     ),
     "Marketing": (
-        "Focus on marketing, advertising, branding, digital marketing and media campaigns "
-        "globally, with priority on Asia, APAC, SEA and Middle East — especially Singapore, "
-        "Malaysia, Indonesia, Thailand, Philippines, Hong Kong, Japan, South Korea, China, "
-        "and the Gulf/MENA region."
+        "Cover marketing, advertising, branding, digital marketing, AI in marketing, and "
+        "media industry news globally. Prioritise Asia and APAC — Singapore, Malaysia, "
+        "Indonesia, Thailand, Philippines, Hong Kong, Japan, South Korea, China — but "
+        "include global tech and AI marketing trends (platform algorithm changes, agency "
+        "transformations, industry data) regardless of geography, as these affect the "
+        "whole industry."
     ),
     "Entertainment": (
-        "PRIMARY focus: Singapore entertainment — local events, concerts, festivals, "
-        "theatre, arts, movies premiering or screening in Singapore, Singaporean artists "
-        "and celebrities, Singapore-based productions. "
-        "SECONDARY: broader Asia/SEA entertainment only when it has clear Singapore "
-        "relevance (e.g. a K-pop act performing in Singapore, a regional streaming show "
-        "popular here). Do NOT include generic Hollywood or global pop-culture news "
-        "unless it has a direct Singapore angle."
+        "PRIMARY focus: Singapore lifestyle — restaurant and food venue openings, "
+        "food festivals, Singapore as a food/travel destination, local events, "
+        "concerts, weekend guides (things to do in Singapore), festivals, exhibitions, "
+        "theatre, arts, movies premiering in Singapore, and major Singapore-hosted events "
+        "(e.g. Singapore Airshow, Formula 1, food fairs). "
+        "SECONDARY: international restaurants or chains opening specifically in Singapore, "
+        "K-pop or Asian acts performing in Singapore. "
+        "Do NOT include generic global entertainment news without a Singapore angle."
     ),
 }
 
-SEARCH_MODEL = "claude-haiku-4-5-20251001"   # Pass 1 — web search (cheap, fast)
-VERIFY_MODEL = "claude-haiku-4-5-20251001"   # Pass 2 — reasoning only (no web search)
+MODEL = "claude-haiku-4-5-20251001"
 
 # Verification confidence thresholds
 VERIFY_HIGH   = 75   # score ≥ 75  → confirmed ✅
@@ -547,17 +594,25 @@ PUBLICATION DATE RULES — follow strictly in this order:
 2. FILL WINDOW (fallback): if the last 24 h yields fewer than {n} articles, extend your search
    back to {cutoff_fill_str} (last {fill_hours} h) to fill the remaining slots.
    Only use older articles to top up — always prefer the most recent ones available.
-3. NEVER return an empty array — there is always relevant {category} news to be found.
+3. If you genuinely cannot find any real articles, return an empty JSON array [] — the system will automatically retry with a wider window. Do NOT fabricate or invent articles.
 4. Every article must have a real, verifiable publication date.
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
-  "title"     : exact headline from the article (string)
-  "source"    : name of the news outlet (string)
-  "published" : publication ISO datetime of the article, e.g. "2026-02-22T14:30:00Z" (string)
-  "url"       : the real, full URL of the article — MUST be a working link you found (string)
-  "summary"   : your 1-2 sentence summary of the story (string)
-  "trusted"   : true if the source is in [{trusted_str}], else false (boolean)
+  "title"           : exact headline from the article (string)
+  "source"          : name of the news outlet (string)
+  "published"       : publication ISO datetime, e.g. "2026-02-22T14:30:00Z" (string)
+  "url"             : the real, full URL — MUST be a working link you found (string)
+  "summary"         : factual 1-2 sentence summary of the article content ONLY — no disclaimers, no caveats, no verification notes (string)
+  "trusted"         : true if the source is in [{trusted_str}], else false (boolean)
+  "verified_score"  : int 0-100 — your confidence this article is credible and real
+  "verified_status" : "confirmed" | "partial" | "unconfirmed"
+  "verified_note"   : 1 sentence explaining your confidence rating (string)
+
+Confidence scoring guide for verified_score:
+  75-100 : reputable outlet + specific factual headline + concrete details + within 24h
+  45-74  : minor concern — lesser-known source OR article is from the fill window (>24h)
+  0-44   : unknown/unreliable source, vague or clickbait headline, inconsistent details
 
 OTHER RULES:
 - Every URL must be a real link you actually retrieved via web_search — never invent URLs.
@@ -568,135 +623,13 @@ OTHER RULES:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  PASS 2 – Verify
-# ──────────────────────────────────────────────────────────────────────────────
-
-def verify_articles(
-    articles: list[dict],
-    category: str,
-    claude_api_key: str,
-) -> list[dict]:
-    """
-    Pass 2: A lightweight reasoning-only call (no web search) that evaluates
-    each article from Pass 1 on source reputation, headline plausibility,
-    summary coherence, and recency.
-
-    For each article it returns:
-      "verified_score"  : int 0-100  (confidence the story is credible)
-      "verified_status" : "confirmed" | "partial" | "unconfirmed"
-      "verified_note"   : short explanation of the assessment
-      "corrected_summary": optionally improved summary (or same as original)
-    """
-    if not articles:
-        return articles
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    # Build a compact list for the prompt
-    articles_json = json.dumps(
-        [{"idx": i, "title": a.get("title",""), "source": a.get("source",""),
-          "url": a.get("url",""), "summary": a.get("summary","")}
-         for i, a in enumerate(articles)],
-        ensure_ascii=False, indent=2
-    )
-
-    prompt = f"""Today is {today}. You are a fact-checking editor for the **{category}** category.
-
-Evaluate each article below using ONLY your internal knowledge and reasoning.
-Do NOT hallucinate — if you are unsure about a source or claim, score conservatively.
-
-Articles:
-{articles_json}
-
-For EACH article (by "idx"), evaluate these four signals:
-1. **Source reputation**: Is the source a well-known, credible outlet for {category}?
-   (Major wire services & established outlets → high; unknown or blog-like → low)
-2. **Headline plausibility**: Does the title describe a realistic, specific event?
-   (Concrete facts → high; vague clickbait or sensationalism → low)
-3. **Summary coherence**: Are the summary details internally consistent and specific?
-   (Named entities, dates, figures → high; generic filler → low)
-4. **Recency**: Does the published date fall within the last 48 hours?
-
-Scoring guide:
-  75-100  Reputable source + plausible headline + coherent summary + recent
-  45-74   Minor concerns on one signal (e.g. lesser-known source but plausible story)
-  0-44    Unknown source, implausible claims, or inconsistent details
-
-Return ONLY a raw JSON array (no markdown fences) with exactly {len(articles)} objects:
-  "idx"              : int — same index as input
-  "verified_score"   : int 0-100
-  "verified_status"  : "confirmed" | "partial" | "unconfirmed"
-  "verified_note"    : 1-2 sentences explaining your reasoning
-  "corrected_summary": improved summary, or the original if accurate
-"""
-
-    delays = [5, 15]
-    for attempt, delay in enumerate([0] + delays):
-        if delay:
-            time.sleep(delay)
-        try:
-            raw           = _run_claude_agentic_loop(
-                prompt, claude_api_key,
-                model=VERIFY_MODEL,
-                tools=None,            # no web search — pure reasoning
-            )
-            verifications = _extract_json_array(raw)
-
-            if verifications is None:
-                if attempt < len(delays):
-                    continue   # no JSON returned — retry
-                return _mark_verify_skipped(articles, "Verifier returned no JSON")
-            if not isinstance(verifications, list):
-                if attempt < len(delays):
-                    continue   # unexpected type — retry
-                return _mark_verify_skipped(articles, "Verifier returned non-list JSON")
-
-            # Merge verification results back into article dicts
-            verify_map = {v.get("idx", i): v for i, v in enumerate(verifications)}
-            enriched   = []
-            for i, art in enumerate(articles):
-                v     = verify_map.get(i, {})
-                cor_s = v.get("corrected_summary", "")
-                art   = dict(art)   # copy so we don't mutate original
-                art["verified_score"]  = int(v.get("verified_score",  0))
-                art["verified_status"] = v.get("verified_status", "unconfirmed")
-                art["verified_note"]   = v.get("verified_note",   "No verification note returned.")
-                if cor_s and cor_s != art.get("summary", ""):
-                    art["summary"] = cor_s
-                enriched.append(art)
-
-            return enriched
-
-        except anthropic.RateLimitError:
-            if attempt < len(delays):
-                continue
-            return _mark_verify_skipped(articles, "Rate limit reached during verification")
-        except Exception as e:
-            return _mark_verify_skipped(articles, f"Verification error: {e}")
-
-    return _mark_verify_skipped(articles, "Rate limit reached during verification")
-
-
-def _mark_verify_skipped(articles: list[dict], reason: str) -> list[dict]:
-    """Attach a 'skipped' verification marker to every article."""
-    out = []
-    for art in articles:
-        art = dict(art)
-        art["verified_score"]  = -1
-        art["verified_status"] = "skipped"
-        art["verified_note"]   = reason
-        out.append(art)
-    return out
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 #  Shared Claude agentic-loop helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _run_claude_agentic_loop(
     prompt: str,
     claude_api_key: str,
-    model: str = SEARCH_MODEL,
+    model: str = MODEL,
     tools: list[dict] | None = None,
 ) -> str:
     """
@@ -734,10 +667,26 @@ def _extract_json_array(raw: str) -> list | None:
     Returns the parsed list, or None if no array was found."""
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
     raw = re.sub(r"\s*```\s*$",        "", raw, flags=re.MULTILINE).strip()
-    match = re.search(r"\[.*\]", raw, re.DOTALL)
-    if not match:
+    # Find the first '[' and the matching closing ']' by counting brackets,
+    # rather than using a greedy/non-greedy regex that can over- or under-match.
+    start = raw.find("[")
+    if start == -1:
         return None
-    return json.loads(match.group())
+    depth, end = 0, -1
+    for i, ch in enumerate(raw[start:], start):
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        return None
+    try:
+        return json.loads(raw[start : end + 1])
+    except json.JSONDecodeError:
+        return None
 
 
 def _run_claude_search(
@@ -757,8 +706,8 @@ def _run_claude_search(
         try:
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
-                model=SEARCH_MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                model=MODEL,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
             )
             articles = _extract_json_array(raw)
 
@@ -890,6 +839,23 @@ def is_within_24h(pub: str) -> bool:
         return True   # if we can't parse, keep the article (don't silently drop)
 
 
+# Hard ceiling: regardless of what Claude returns, never show articles older than this.
+# The prompt allows up to 5-day fallback — 7 days gives a safe buffer while
+# preventing months-old content (e.g. research reports) from slipping through.
+MAX_ARTICLE_AGE_DAYS = 7
+
+
+def _within_max_age(pub: str) -> bool:
+    """Return True if the article is within MAX_ARTICLE_AGE_DAYS."""
+    try:
+        clean = pub[:19].replace("Z", "")
+        dt  = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        return 0 <= age.total_seconds() <= MAX_ARTICLE_AGE_DAYS * 86400
+    except Exception:
+        return True   # unparseable date — keep the article, don't silently drop
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Sidebar
 # ──────────────────────────────────────────────────────────────────────────────
@@ -945,21 +911,21 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("### 🔬 How verification works")
+    st.markdown("### 🔬 How it works")
     st.markdown("""
-**Two-pass pipeline:**
+**Single-pass pipeline:**
 
-**Pass 1 · Search** — Claude searches the live web and finds the latest news for each category.
+Claude searches the live web for each category and simultaneously self-assesses every article it finds:
+- Source reputation (major outlet vs unknown)
+- Headline plausibility (specific facts vs clickbait)
+- Recency (within 24h vs fallback window)
 
-**Pass 2 · Verify** — A second independent Claude call re-searches the web to cross-check every article:
-- Confirms the story is real and recent
-- Checks headline & key facts
-- Scores confidence **0 – 100**:
+**Confidence score 0 – 100:**
   - 🟢 **≥ 75** Confirmed
   - 🟡 **45–74** Partially confirmed
   - 🔴 **< 45** Unconfirmed
 
-*Most categories focus on **Asia · APAC · SEA**. Regional includes global geopolitical events. Sustainable Finance and Marketing have global coverage.*
+*Most categories: **Asia · APAC · SEA** focus. Sustainable Finance and Marketing are global.*
     """)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -969,9 +935,7 @@ st.markdown("""
 <div class="app-header">
     <h1>📰 24h News Explorer</h1>
     <p>
-        <span style="opacity:.8">Pass 1: Claude searches the web</span>
-        &nbsp;·&nbsp;
-        <span style="opacity:.8">Pass 2: Independent verification</span>
+        <span style="opacity:.8">Claude searches the web &amp; self-verifies each article</span>
         &nbsp;·&nbsp;
         Asia · APAC · SEA focus
         &nbsp;·&nbsp;
@@ -1034,9 +998,6 @@ if search_btn or st.session_state.get("last_results"):
             progress = st.progress(0, text="Starting…")
             status   = st.empty()
 
-            INTER_CAT_PAUSE  = 6   # seconds between categories
-            INTER_PASS_PAUSE = 3   # seconds between Pass 1 → Pass 2
-
             seen_urls:   set[str] = set()
             seen_titles: set[str] = set()
 
@@ -1044,22 +1005,14 @@ if search_btn or st.session_state.get("last_results"):
                 icon     = CATEGORY_ICONS.get(cat, "📌")
                 base_pct = i / total_cats
 
-                if i > 0:
-                    status.markdown(
-                        f"⏱️ Pausing {INTER_CAT_PAUSE}s before next category…",
-                        unsafe_allow_html=True,
-                    )
-                    time.sleep(INTER_CAT_PAUSE)
-
-                # ── PASS 1: Search ────────────────────────────────────────────
+                # ── Search ────────────────────────────────────────────────────
                 status.markdown(
-                    f'<span class="pass-label pass-1">PASS 1 · SEARCH</span>'
-                    f'🌐 Claude is searching for <b>{icon} {cat}</b> news…',
+                    f'🌐 Searching <b>{icon} {cat}</b>…',
                     unsafe_allow_html=True,
                 )
                 progress.progress(
                     base_pct,
-                    text=f"Pass 1 – Searching: {cat}…",
+                    text=f"Searching: {cat}…",
                 )
 
                 articles = fetch_news_with_search(
@@ -1095,6 +1048,10 @@ if search_btn or st.session_state.get("last_results"):
                     for a in articles:
                         a["fallback"] = True   # flag so card can show a note
 
+                # Hard date cap — drop anything older than MAX_ARTICLE_AGE_DAYS
+                # regardless of what Claude returned (prevents months-old content)
+                articles = [a for a in articles if _within_max_age(a.get("published", ""))]
+
                 # Post-fetch dedup filter
                 articles = [
                     a for a in articles
@@ -1103,25 +1060,11 @@ if search_btn or st.session_state.get("last_results"):
                 ]
 
                 for a in articles:
-                    if a.get("url"):
-                        seen_urls.add(a["url"].strip())
+                    u = str(a.get("url") or "").strip()
+                    if u and u != "#":          # don't treat missing-URL placeholder as a real URL
+                        seen_urls.add(u)
                     if a.get("title"):
                         seen_titles.add(a["title"].strip())
-
-                # ── PASS 2: Verify (optional) ─────────────────────────────────
-                if articles:
-                    time.sleep(INTER_PASS_PAUSE)
-                    status.markdown(
-                        f'<span class="pass-label pass-2">PASS 2 · VERIFY</span>'
-                        f'🔬 Cross-checking <b>{len(articles)}</b> articles in '
-                        f'<b>{icon} {cat}</b>…',
-                        unsafe_allow_html=True,
-                    )
-                    progress.progress(
-                        base_pct + 0.5 / total_cats,
-                        text=f"Pass 2 – Verifying: {cat}…",
-                    )
-                    articles = verify_articles(articles, cat, claude_api_key)
 
                 progress.progress(
                     (i + 1) / total_cats,
@@ -1168,7 +1111,7 @@ if search_btn or st.session_state.get("last_results"):
         </div>
         <div class="metric-card">
             <div class="value" style="color:#16a34a">{confirmed_n}</div>
-            <div class="label">✅ Verified (Pass 2)</div>
+            <div class="label">✅ Verified</div>
         </div>
         <div class="metric-card">
             <div class="value">{cats_found}</div>
@@ -1224,20 +1167,24 @@ if search_btn or st.session_state.get("last_results"):
             st.markdown(f'<div class="section-title">{icon} {cat}</div>', unsafe_allow_html=True)
 
             for art in articles:
-                title   = art.get("title",          "No title")
-                source  = art.get("source",         "Unknown")
-                url     = art.get("url",            "#")
-                pub     = art.get("published",      "")
-                summary = art.get("summary",        "")
-                trusted = art.get("trusted",        False)
-                v_score  = art.get("verified_score",  -1)
-                v_status  = art.get("verified_status", "skipped")
-                v_note    = art.get("verified_note",   "")
-                is_fallback = art.get("fallback", False)
+                title   = html_mod.escape(str(art.get("title")   or "No title"))
+                source  = html_mod.escape(str(art.get("source")  or "Unknown"))
+                url     = str(art.get("url") or "#").strip()
+                pub     = str(art.get("published") or "")
+                summary = str(art.get("summary")   or "")
+                trusted = bool(art.get("trusted",  False))
+                # verified_score: Claude may return a string — coerce safely
+                try:
+                    v_score = int(art.get("verified_score", -1))
+                except (TypeError, ValueError):
+                    v_score = -1
+                v_status    = str(art.get("verified_status") or "skipped")
+                v_note      = str(art.get("verified_note")   or "")
+                is_fallback = bool(art.get("fallback", False))
 
                 age_str    = format_age(pub)
                 trust_cls  = "badge-trust-yes" if trusted else "badge-trust-no"
-                trust_lbl  = "✅ Trusted"       if trusted else "⚠️ Unverified"
+                trust_lbl  = "✅ Listed source" if trusted else "📰 Unlisted source"
 
                 card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status, trusted_only)
 
@@ -1253,13 +1200,20 @@ if search_btn or st.session_state.get("last_results"):
                         f"<u>{pub[:10]}</u>. Shown as fallback because nothing more recent was found.</span></div>"
                     )
 
-                clean_summary = strip_html_tags(summary)
+                clean_summary = html_mod.escape(strip_html_tags(summary))
                 summary_html = (
                     f"<p class='summary-text'>{clean_summary}</p>"
                 ) if clean_summary else ""
 
-                # Sanitise URL: strip quotes and whitespace that break inline HTML
-                safe_url = url.strip().replace('"', '%22').replace("'", '%27')
+                clean_note = html_mod.escape(strip_html_tags(v_note))
+                note_html  = (
+                    f"<div class='verify-note'>🔍 {clean_note}</div>"
+                ) if clean_note else ""
+
+                # Sanitise URL for use inside a single-quoted HTML attribute:
+                # html.escape handles & → &amp; (required in HTML attrs),
+                # then we URL-encode ' so it can't break the attribute boundary.
+                safe_url = html_mod.escape(url, quote=False).replace("'", "%27")
 
                 # Source badge — clickable link
                 source_badge = (
@@ -1277,19 +1231,29 @@ if search_btn or st.session_state.get("last_results"):
                     f"🔗 Read full article →</a>"
                 )
 
-                st.markdown(f"""
-                <div class="news-card {card_cls}">
-                    {stale_html}
-                    <p class="headline">{title}</p>
-                    <div class="meta">
-                        {source_badge}
-                        <span class="badge badge-cat">{icon} {cat}</span>
-                        <span class="badge badge-time">🕐 {age_str}</span>
-                        <span class="badge {trust_cls}">{trust_lbl}</span>
-                        <span class="badge {v_badge_cls}">{v_badge_lbl}</span>
-                        {"<span class='badge badge-verify-skip'>🔄 Extended search</span>" if is_fallback else ""}
-                    </div>
-                    {summary_html}
-                    {read_link}
-                </div>
-                """, unsafe_allow_html=True)
+                # Build card as a single concatenated string — NO blank lines.
+                # Streamlit's CommonMark parser ends an HTML block the moment it
+                # sees a blank line, so any empty interpolated variable (e.g. note_html="")
+                # in a multi-line f-string would split the block and show raw HTML.
+                fallback_badge = (
+                    "<span class='badge badge-verify-skip'>🔄 Extended search</span>"
+                    if is_fallback else ""
+                )
+                card_html = (
+                    f'<div class="news-card {card_cls}">'
+                    + stale_html
+                    + f'<p class="headline">{title}</p>'
+                    + f'<div class="meta">'
+                    + source_badge
+                    + f'<span class="badge badge-cat">{icon} {cat}</span>'
+                    + f'<span class="badge badge-time">🕐 {age_str}</span>'
+                    + f'<span class="badge {trust_cls}">{trust_lbl}</span>'
+                    + f'<span class="badge {v_badge_cls}">{v_badge_lbl}</span>'
+                    + fallback_badge
+                    + '</div>'
+                    + summary_html
+                    + note_html
+                    + read_link
+                    + '</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
