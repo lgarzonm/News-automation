@@ -264,6 +264,7 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Crowdfund Insider", "Lending Times", "AltFi",
         "Private Debt Investor", "Institutional Investor",
         "Yahoo Finance", "Global Trade Review",
+        "The Intermediary", "Alternative Credit Investor",
     ],
     "Fintech": [
         "Fintech News Singapore", "Fintech News SG", "e27", "Deal Street Asia", "Tech in Asia",
@@ -295,12 +296,12 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "CNBC", "Campaignme", "Seafoam Media",
     ],
     "Entertainment": [
-        "The Straits Times", "CNA", "TODAY", "8Days", "Mothership",
+        "The Straits Times", "CNA", "TODAY", "8Days", "Mothership", "Mothership SG",
         "Time Out Singapore", "Visit Singapore", "The Smart Local",
         "Variety Asia", "South China Morning Post",
         "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
         "Nikkei Asia", "Vulcan Post", "Time Out",
-        "Today Online", "Bandwagon",
+        "Today Online", "Bandwagon", "HungryGoWhere", "Sethlui.com",
     ],
 }
 
@@ -310,12 +311,12 @@ CATEGORY_SEARCH_QUERIES: dict[str, str] = {
     "Indexes":             "stock index S&P 500 Dow Nasdaq Nikkei STI Kospi Hang Seng market close daily recap news today",
     "Regional":            "Asia APAC geopolitical economy trade policy China Japan India Southeast Asia news today",
     "Country Credit":      "sovereign credit rating Moody's S&P Fitch upgrade downgrade government bonds debt news today",
-    "Alternative Lending": "private credit direct lending Blackstone Blue Owl Ares fund flows trade finance news today",
+    "Alternative Lending": "alternative lending private credit SME direct lending insurance real estate fund global news today",
     "Fintech":             "fintech AI digital banking payments Islamic fintech startup funding APAC Asia news today",
     "Start-up":            "startup funding venture capital robotics biotech deep tech Asia Korea Vietnam news today",
-    "Sustainable Finance": "sustainable finance ESG green bonds social bonds net zero solar climate bank news today global",
+    "Sustainable Finance": "sustainable finance ESG corporate green bonds social bonds net zero regenerative agriculture climate news today global",
     "Marketing":           "marketing advertising AI brand campaigns digital transformation agency news today",
-    "Entertainment":       "Singapore entertainment events concerts movies music theatre arts things to do news today",
+    "Entertainment":       "Singapore restaurant opening food dining events concerts arts lifestyle things to do news today",
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
@@ -355,6 +356,7 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "loan portfolio", "credit fund", "lending platform", "yield", "structured finance",
         "Blackstone", "Blue Owl", "Ares", "KKR credit", "direct lending",
         "trade finance", "fund flows", "outflows", "retail investors", "BDC",
+        "insurance private credit", "real estate credit", "private markets", "UK SME",
     ],
     "Fintech": [
         "fintech", "digital bank", "e-wallet", "payments", "BNPL",
@@ -374,6 +376,7 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "green infrastructure", "sustainable capital", "climate bond", "transition finance",
         "social bond", "social loan", "solar energy", "emissions", "net zero summit",
         "REIT green", "bank sustainability milestone",
+        "regenerative agriculture", "corporate ESG", "corporate sustainability",
     ],
     "Marketing": [
         "branding", "advertising", "digital marketing", "campaign", "consumer",
@@ -387,6 +390,9 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "concert", "festival", "movie", "streaming", "art exhibition",
         "theatre", "music", "K-pop", "anime", "gaming",
         "Singapore events", "things to do", "weekend events", "Time Out Singapore",
+        "restaurant opening Singapore", "food Singapore", "dining Singapore",
+        "Singapore food", "Jewel Changi", "Singapore lifestyle", "food festival Singapore",
+        "Singapore destination", "new restaurant", "Singapore Airshow",
     ],
 }
 
@@ -422,11 +428,13 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "when published by Moody's, S&P, or Fitch — these are relevant regardless of region."
     ),
     "Alternative Lending": (
-        "Cover alternative lending, private credit, and direct lending globally. "
-        "US and European private credit managers (Blackstone, Blue Owl, Ares, KKR) are key "
-        "market movers and should be included. Also cover Asia, APAC and SEA alternative "
-        "lending — Singapore, Indonesia, Malaysia, Thailand, Philippines, Vietnam and China — "
-        "especially trade finance, P2P and digital credit."
+        "Coverage is global — do NOT restrict to Asia. "
+        "Private credit and alternative lending are dominated by US and European fund managers "
+        "(Blackstone, Blue Owl, Ares, Apollo, KKR). Cover US, UK, and European alternative "
+        "lending and private credit news as primary. Also include Asia-Pacific stories "
+        "(Singapore, Indonesia, Malaysia, trade finance, SME lending) when available. "
+        "Insurance-linked private credit, real estate credit, and SME alternative finance "
+        "are all in scope regardless of geography."
     ),
     "Fintech": (
         "Focus on fintech, digital banking, payments, crypto-regulation and wealthtech "
@@ -457,13 +465,14 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "whole industry."
     ),
     "Entertainment": (
-        "PRIMARY focus: Singapore entertainment — local events, concerts, festivals, "
-        "theatre, arts, movies premiering or screening in Singapore, Singaporean artists "
-        "and celebrities, Singapore-based productions. "
-        "SECONDARY: broader Asia/SEA entertainment only when it has clear Singapore "
-        "relevance (e.g. a K-pop act performing in Singapore, a regional streaming show "
-        "popular here). Do NOT include generic Hollywood or global pop-culture news "
-        "unless it has a direct Singapore angle."
+        "PRIMARY focus: Singapore lifestyle — restaurant and food venue openings, "
+        "food festivals, Singapore as a food/travel destination, local events, "
+        "concerts, weekend guides (things to do in Singapore), festivals, exhibitions, "
+        "theatre, arts, movies premiering in Singapore, and major Singapore-hosted events "
+        "(e.g. Singapore Airshow, Formula 1, food fairs). "
+        "SECONDARY: international restaurants or chains opening specifically in Singapore, "
+        "K-pop or Asian acts performing in Singapore. "
+        "Do NOT include generic global entertainment news without a Singapore angle."
     ),
 }
 
