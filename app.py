@@ -1,10 +1,10 @@
 """
-24h News Explorer
+36h News Explorer
 ─────────────────
 Uses Claude with the built-in `web_search` tool (Anthropic API).
 
 Single-pass pipeline:
-  Claude searches the live web for real news (last 24 h) and simultaneously
+  Claude searches the live web for real news (last 36 h) and simultaneously
   self-assesses each article's credibility — source reputation, headline
   plausibility, and recency — returning a verified_score (0-100) inline.
 
@@ -26,7 +26,7 @@ import streamlit as st
 #  Page config
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="📰 24h News Explorer",
+    page_title="📰 36h News Explorer",
     page_icon="📰",
     layout="wide",
 )
@@ -504,22 +504,19 @@ def fetch_news_with_search(
     keywords: list[str] | None = None,
     excluded_urls: set[str] | None = None,
     excluded_titles: set[str] | None = None,
-    fill_hours: int = 48,
+    fill_hours: int = 36,
 ) -> list[dict]:
     """
-    Pass 1: Ask Claude to search the live web for the latest news in `category`.
-    Primary window is always the last 24 h. If fewer than n articles are found
-    there, Claude fills the remaining slots from up to `fill_hours` ago.
+    Ask Claude to search the live web for the latest news in `category`.
+    The hard time window is always the last 36 h — no extension beyond that.
     Returns a raw list of article dicts (title, source, published, url, summary, trusted).
     """
     # Use SGT (UTC+8) as the reference timezone — the app's primary audience is Singapore
     sgt_offset     = timezone(timedelta(hours=8))
     sgt_now        = datetime.now(timezone.utc).astimezone(sgt_offset)
     now_sgt_str    = sgt_now.strftime("%Y-%m-%d %H:%M SGT")
-    cutoff_24h     = datetime.now(timezone.utc) - timedelta(hours=24)
-    cutoff_fill    = datetime.now(timezone.utc) - timedelta(hours=fill_hours)
-    cutoff_24h_str = cutoff_24h.strftime("%Y-%m-%dT%H:%M:%SZ")
-    cutoff_fill_str = cutoff_fill.strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff_36h     = datetime.now(timezone.utc) - timedelta(hours=36)
+    cutoff_36h_str = cutoff_36h.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     trusted_str  = ", ".join(TRUSTED_SOURCES.get(category, []))
     base_query   = CATEGORY_SEARCH_QUERIES.get(category, f"{category} news today")
@@ -588,14 +585,13 @@ Geographic / editorial focus:
 
 {source_rule}{exclusion_rule}
 
-PUBLICATION DATE RULES — follow strictly in this order:
-1. PRIMARY WINDOW (preferred): search for articles published after {cutoff_24h_str} (last 24 h).
-   Fill as many of the {n} slots as possible from this window first.
-2. FILL WINDOW (fallback): if the last 24 h yields fewer than {n} articles, extend your search
-   back to {cutoff_fill_str} (last {fill_hours} h) to fill the remaining slots.
-   Only use older articles to top up — always prefer the most recent ones available.
-3. If you genuinely cannot find any real articles, return an empty JSON array [] — the system will automatically retry with a wider window. Do NOT fabricate or invent articles.
-4. Every article must have a real, verifiable publication date.
+PUBLICATION DATE RULES — non-negotiable:
+1. HARD WINDOW: only include articles published after {cutoff_36h_str} (last 36 h).
+   Do NOT include anything older — no exceptions, even if fewer than {n} articles are found.
+2. If you genuinely cannot find {n} real articles within the last 36 h, return however many
+   you did find (even if fewer than {n}). Return an empty array [] if none at all.
+   Do NOT fabricate articles. Do NOT stretch the date window.
+3. Every article must have a real, verifiable publication date.
 
 After searching, return ONLY a raw JSON array (no markdown, no explanation) with exactly {n} items.
 Each item must have these fields:
@@ -610,8 +606,8 @@ Each item must have these fields:
   "verified_note"   : 1 sentence explaining your confidence rating (string)
 
 Confidence scoring guide for verified_score:
-  75-100 : reputable outlet + specific factual headline + concrete details + within 24h
-  45-74  : minor concern — lesser-known source OR article is from the fill window (>24h)
+  75-100 : reputable outlet + specific factual headline + concrete details + within 36h
+  45-74  : minor concern — lesser-known source OR headline is vague
   0-44   : unknown/unreliable source, vague or clickbait headline, inconsistent details
 
 OTHER RULES:
@@ -828,30 +824,29 @@ def format_age(pub: str) -> str:
         return pub[:10] if pub else "recent"
 
 
-def is_within_24h(pub: str) -> bool:
-    """Return True if the article's published timestamp is within the last 24 hours."""
+def is_within_36h(pub: str) -> bool:
+    """Return True if the article's published timestamp is within the last 36 hours."""
     try:
         clean = pub[:19].replace("Z", "")
         dt  = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
         age = datetime.now(timezone.utc) - dt
-        return 0 <= age.total_seconds() <= 86400   # 24 h = 86 400 s
+        return 0 <= age.total_seconds() <= 129600   # 36 h = 129 600 s
     except Exception:
         return True   # if we can't parse, keep the article (don't silently drop)
 
 
 # Hard ceiling: regardless of what Claude returns, never show articles older than this.
-# The prompt allows up to 5-day fallback — 7 days gives a safe buffer while
-# preventing months-old content (e.g. research reports) from slipping through.
-MAX_ARTICLE_AGE_DAYS = 7
+# Hard cap: any article older than 36 h is dropped, regardless of what Claude returned.
+MAX_ARTICLE_AGE_HOURS = 36
 
 
 def _within_max_age(pub: str) -> bool:
-    """Return True if the article is within MAX_ARTICLE_AGE_DAYS."""
+    """Return True if the article is within the 36-hour hard cap."""
     try:
         clean = pub[:19].replace("Z", "")
         dt  = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
         age = datetime.now(timezone.utc) - dt
-        return 0 <= age.total_seconds() <= MAX_ARTICLE_AGE_DAYS * 86400
+        return 0 <= age.total_seconds() <= MAX_ARTICLE_AGE_HOURS * 3600
     except Exception:
         return True   # unparseable date — keep the article, don't silently drop
 
@@ -918,7 +913,7 @@ with st.sidebar:
 Claude searches the live web for each category and simultaneously self-assesses every article it finds:
 - Source reputation (major outlet vs unknown)
 - Headline plausibility (specific facts vs clickbait)
-- Recency (within 24h vs fallback window)
+- Recency (published within the 36h window)
 
 **Confidence score 0 – 100:**
   - 🟢 **≥ 75** Confirmed
@@ -933,7 +928,7 @@ Claude searches the live web for each category and simultaneously self-assesses 
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="app-header">
-    <h1>📰 24h News Explorer</h1>
+    <h1>📰 36h News Explorer</h1>
     <p>
         <span style="opacity:.8">Claude searches the web &amp; self-verifies each article</span>
         &nbsp;·&nbsp;
@@ -1023,16 +1018,16 @@ if search_btn or st.session_state.get("last_results"):
                     keywords       = category_keywords.get(cat, []),
                     excluded_urls  = seen_urls,
                     excluded_titles= seen_titles,
-                    fill_hours     = 48,   # prefer 24h; fill from up to 48h
+                    fill_hours     = 36,   # hard 36-hour window
                 )
 
                 # ── Auto-fallback if still empty ──────────────────────────────
-                # (rare — the prompt already fills from 48h; this catches genuine
-                #  dry spells by widening to 5 days with all source filters relaxed)
+                # Retries within the SAME 36-hour window, but with source filter
+                # and keyword restriction relaxed — no date extension.
                 if not articles:
                     status.markdown(
                         f'<span class="pass-label pass-1">PASS 1 · RETRY</span>'
-                        f'🔄 No results — retrying <b>{icon} {cat}</b> with extended window…',
+                        f'🔄 No results — retrying <b>{icon} {cat}</b> with relaxed filters…',
                         unsafe_allow_html=True,
                     )
                     articles = fetch_news_with_search(
@@ -1043,13 +1038,13 @@ if search_btn or st.session_state.get("last_results"):
                         keywords       = [],      # drop keyword restriction
                         excluded_urls  = seen_urls,
                         excluded_titles= seen_titles,
-                        fill_hours     = 120,     # fill from up to 5 days
+                        fill_hours     = 36,      # still hard 36-hour cap — no extension
                     )
                     for a in articles:
                         a["fallback"] = True   # flag so card can show a note
 
-                # Hard date cap — drop anything older than MAX_ARTICLE_AGE_DAYS
-                # regardless of what Claude returned (prevents months-old content)
+                # Hard date cap — drop anything older than 36 h
+                # regardless of what Claude returned (prevents stale content slipping through)
                 articles = [a for a in articles if _within_max_age(a.get("published", ""))]
 
                 # Post-fetch dedup filter
@@ -1118,7 +1113,7 @@ if search_btn or st.session_state.get("last_results"):
             <div class="label">Categories</div>
         </div>
         <div class="metric-card">
-            <div class="value">24h</div>
+            <div class="value">36h</div>
             <div class="label">Time Window</div>
         </div>
     </div>
@@ -1131,7 +1126,7 @@ if search_btn or st.session_state.get("last_results"):
         st.download_button(
             label="📥  Export All Results to Excel",
             data=excel_bytes,
-            file_name=f"news_24h_{ts}.xlsx",
+            file_name=f"news_36h_{ts}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
@@ -1152,10 +1147,8 @@ if search_btn or st.session_state.get("last_results"):
                     "<div style='background:#fef3c7;border:1px solid #fde68a;"
                     "border-left:4px solid #d97706;border-radius:8px;"
                     "padding:.8rem 1.1rem;margin-bottom:1rem;color:#78350f;'>"
-                    "⏳ <b>No articles retrieved for this category.</b> "
-                    "This is usually caused by a temporary API rate limit. "
-                    "Wait a moment and search again — or reduce the number of "
-                    "categories selected at once."
+                    "📭 <b>No articles found in the last 36 hours for this category.</b> "
+                    "Try searching again later, or adjust the categories selected."
                     "</div>",
                     unsafe_allow_html=True,
                 )
@@ -1187,18 +1180,6 @@ if search_btn or st.session_state.get("last_results"):
                 trust_lbl  = "✅ Listed source" if trusted else "📰 Unlisted source"
 
                 card_cls, v_badge_cls, v_badge_lbl = verify_css_class(v_score, v_status, trusted_only)
-
-                # ── staleness warning (outside 24 h window) ───────────────────
-                stale_html = ""
-                if pub and not is_within_24h(pub):
-                    stale_html = (
-                        "<div style='font-size:.85rem;font-weight:700;color:#7c2d12;"
-                        "background:#fff7ed;border-left:5px solid #ea580c;"
-                        "border-radius:6px;padding:.55rem .85rem;margin-bottom:.6rem;"
-                        "display:flex;align-items:center;gap:.5rem;'>"
-                        "⚠️ <span>Article outside 24h window — published "
-                        f"<u>{pub[:10]}</u>. Shown as fallback because nothing more recent was found.</span></div>"
-                    )
 
                 clean_summary = html_mod.escape(strip_html_tags(summary))
                 summary_html = (
@@ -1235,13 +1216,8 @@ if search_btn or st.session_state.get("last_results"):
                 # Streamlit's CommonMark parser ends an HTML block the moment it
                 # sees a blank line, so any empty interpolated variable (e.g. note_html="")
                 # in a multi-line f-string would split the block and show raw HTML.
-                fallback_badge = (
-                    "<span class='badge badge-verify-skip'>🔄 Extended search</span>"
-                    if is_fallback else ""
-                )
                 card_html = (
                     f'<div class="news-card {card_cls}">'
-                    + stale_html
                     + f'<p class="headline">{title}</p>'
                     + f'<div class="meta">'
                     + source_badge
@@ -1249,7 +1225,6 @@ if search_btn or st.session_state.get("last_results"):
                     + f'<span class="badge badge-time">🕐 {age_str}</span>'
                     + f'<span class="badge {trust_cls}">{trust_lbl}</span>'
                     + f'<span class="badge {v_badge_cls}">{v_badge_lbl}</span>'
-                    + fallback_badge
                     + '</div>'
                     + summary_html
                     + note_html
