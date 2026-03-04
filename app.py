@@ -225,20 +225,23 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
     "Stocks": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "Nikkei Asia", "South China Morning Post", "The Straits Times",
-        "Business Times Singapore", "Business Times", "Seeking Alpha",
+        "The Business Times", "Business Times Singapore", "Seeking Alpha",
         "Investor's Business Daily", "Barron's", "MarketWatch", "Yahoo Finance",
+        "Japan Wire by Kyodo News", "Analytics Insight",
     ],
     "Fiats": [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
         "CNBC", "FX Street", "Investopedia", "Nikkei Asia",
         "South China Morning Post", "MAS (Monetary Authority of Singapore)",
         "Barron's", "MarketWatch", "FX Empire",
+        "Convera", "The Edge Singapore", "Currency News", "The Guardian",
     ],
     "Indexes": [
         "Bloomberg", "Reuters", "Financial Times", "CNBC",
         "Nikkei Asia", "South China Morning Post", "Business Times Singapore",
         "The Straits Times", "Morningstar", "S&P Global",
         "MarketWatch", "Barron's", "Yahoo Finance",
+        "TradingView", "Japan Wire by Kyodo News",
     ],
     "Regional": [
         "Nikkei Asia", "South China Morning Post", "The Straits Times",
@@ -246,116 +249,144 @@ TRUSTED_SOURCES: dict[str, list[str]] = {
         "Vietnam News", "Reuters", "Bloomberg", "Channel NewsAsia (CNA)",
         "The Guardian", "BBC", "Associated Press", "Al Jazeera",
         "Financial Times", "Wall Street Journal",
+        "The Malay Mail", "YICAI Global", "Asian News Network",
+        "Japan Wire by Kyodo News", "Korea JoongAng Daily",
     ],
     "Country Credit": [
         "Bloomberg", "Reuters", "Financial Times", "Moody's",
         "S&P Global", "Fitch Ratings", "The Straits Times",
         "Nikkei Asia", "South China Morning Post", "Asian Development Bank",
-        "Vietnam News", "Bangkok Post", "The Jakarta Post",
+        "Vietnam News", "Bangkok Post", "The Jakarta Post", "SeeNews",
     ],
     "Alternative Lending": [
         "Bloomberg", "Reuters", "Financial Times", "Fintech News Singapore", "e27",
         "Deal Street Asia", "Tech in Asia", "The Business Times",
         "Crowdfund Insider", "Lending Times", "AltFi",
         "Private Debt Investor", "Institutional Investor",
+        "Yahoo Finance", "Global Trade Review",
     ],
     "Fintech": [
-        "Fintech News Singapore", "e27", "Deal Street Asia", "Tech in Asia",
+        "Fintech News Singapore", "Fintech News SG", "e27", "Deal Street Asia", "Tech in Asia",
         "TechCrunch", "Bloomberg", "Reuters", "The Business Times",
         "Channel NewsAsia (CNA)", "Fintechnews.sg",
         "Fintech Futures", "Fintech Global", "Finextra", "Payments Dive",
+        "Fintech Malaysia News", "Asian Banking & Finance",
+        "RetailNews Asia", "Retailer Banker International", "Bangkok Post",
     ],
     "Start-up": [
         "e27", "Tech in Asia", "Deal Street Asia", "TechCrunch",
         "Bloomberg", "Reuters", "Channel NewsAsia (CNA)",
         "The Straits Times", "KrASIA", "Vulcan Post",
         "Yahoo Finance", "Forbes", "Business Insider",
+        "YICAI Global", "Asian News Network", "Korea Tech Desk", "EU Startups",
     ],
     "Sustainable Finance": [
         "Bloomberg Green", "Reuters", "Financial Times", "The Straits Times",
         "Channel NewsAsia (CNA)", "Eco-Business", "MAS (Monetary Authority of Singapore)",
         "Asian Development Bank", "Carbon Brief", "GreenBiz",
         "Yahoo Finance", "CNBC", "Wall Street Journal", "S&P Global",
+        "Sustainability Magazine", "Sustainability Online", "Sustainability Network", "ESG News",
     ],
     "Marketing": [
         "Campaign Asia", "Marketing Interactive", "Mumbrella Asia",
         "The Drum", "Adweek", "South China Morning Post",
         "The Straits Times", "Channel NewsAsia (CNA)",
         "Marketing Week", "Ad Age", "Campaign ME", "Campaign",
+        "CNBC", "Campaignme", "Seafoam Media",
     ],
     "Entertainment": [
         "The Straits Times", "CNA", "TODAY", "8Days", "Mothership",
         "Time Out Singapore", "Visit Singapore", "The Smart Local",
         "Variety Asia", "South China Morning Post",
         "Channel NewsAsia (CNA)", "Billboard", "Tatler Asia",
-        "Nikkei Asia", "Vulcan Post", "Time Out", "Time Out Singapore",
+        "Nikkei Asia", "Vulcan Post", "Time Out",
         "Today Online", "Bandwagon",
     ],
 }
 
 CATEGORY_SEARCH_QUERIES: dict[str, str] = {
-    "Stocks":              "global stock market equities Wall Street Asia APAC news today",
-    "Fiats":               "forex currency exchange rates USD EUR JPY SGD AUD news today",
-    "Indexes":             "stock market index S&P 500 Dow Nasdaq Nikkei Hang Seng MSCI news today",
-    "Regional":            "global geopolitical macro economy Asia APAC Middle East news today",
-    "Country Credit":      "sovereign credit rating government bonds debt Asia APAC news today",
-    "Alternative Lending": "alternative lending private credit P2P non-bank financing news today",
-    "Fintech":             "fintech financial technology payments digital banking startup news today",
-    "Start-up":            "startup funding venture capital seed round Series A B news today",
-    "Sustainable Finance": "sustainable finance ESG green bonds climate infrastructure news today global",
-    "Marketing":           "marketing advertising brand campaigns media news today",
-    "Entertainment":       "Singapore entertainment events concerts movies music theatre arts news today",
+    "Stocks":              "stock market equities Asia APAC Singapore STI Kospi Wall Street geopolitical inflation news today",
+    "Fiats":               "forex currency USD SGD IDR yuan rupee PBOC MAS oil tariffs central bank exchange rate news today",
+    "Indexes":             "stock index S&P 500 Dow Nasdaq Nikkei STI Kospi Hang Seng market close daily recap news today",
+    "Regional":            "Asia APAC geopolitical economy trade policy China Japan India Southeast Asia news today",
+    "Country Credit":      "sovereign credit rating Moody's S&P Fitch upgrade downgrade government bonds debt news today",
+    "Alternative Lending": "private credit direct lending Blackstone Blue Owl Ares fund flows trade finance news today",
+    "Fintech":             "fintech AI digital banking payments Islamic fintech startup funding APAC Asia news today",
+    "Start-up":            "startup funding venture capital robotics biotech deep tech Asia Korea Vietnam news today",
+    "Sustainable Finance": "sustainable finance ESG green bonds social bonds net zero solar climate bank news today global",
+    "Marketing":           "marketing advertising AI brand campaigns digital transformation agency news today",
+    "Entertainment":       "Singapore entertainment events concerts movies music theatre arts things to do news today",
 }
 
 CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
     "Stocks": [
         "earnings", "profits", "stock rally", "stock drop", "guidance",
         "dividends", "buyback", "IPO", "valuation", "volatility",
+        "STI", "Kospi", "Nifty", "Sensex", "geopolitical", "inflation",
+        "war stocks", "market tumble", "Asian markets",
     ],
     "Fiats": [
         "dollar", "euro", "DXY", "currency", "FX",
         "exchange rate", "devaluation", "central bank", "rate hike", "inflation",
+        "SGD", "IDR", "rupee", "yuan", "PBOC", "MAS",
+        "tariffs", "oil-currency", "de-dollarization",
     ],
     "Indexes": [
         "S&P 500", "Nasdaq", "Dow", "Nikkei", "Hang Seng",
         "MSCI", "market rally", "market selloff", "futures", "ETF",
+        "STI", "Kospi", "market close", "daily recap", "tech sector",
+        "index levels", "geopolitical shock",
     ],
     "Regional": [
         "ASEAN", "Southeast Asia", "APAC", "Singapore economy", "Indonesia economy",
         "China stimulus", "Asia growth", "trade", "geopolitical", "conflict",
         "Middle East", "oil prices", "sanctions", "elections", "policy",
+        "India", "Japan innovation", "China AI", "DeepSeek", "ringgit",
+        "trade deal", "boycott", "activist pressure",
     ],
     "Country Credit": [
         "sovereign debt", "government bonds", "credit rating", "Moody's", "S&P rating",
         "Fitch", "default risk", "debt crisis", "fiscal deficit", "bond yields",
+        "upgrade", "downgrade", "outlook", "public debt", "rating action",
+        "Serbia", "Slovenia", "Vietnam credit", "emerging market debt",
     ],
     "Alternative Lending": [
         "private credit", "alternative lending", "SME loans", "non-bank lending", "asset-backed",
         "loan portfolio", "credit fund", "lending platform", "yield", "structured finance",
+        "Blackstone", "Blue Owl", "Ares", "KKR credit", "direct lending",
+        "trade finance", "fund flows", "outflows", "retail investors", "BDC",
     ],
     "Fintech": [
         "fintech", "digital bank", "e-wallet", "payments", "BNPL",
         "digital lending", "open banking", "blockchain", "crypto", "financial inclusion",
+        "AI fintech", "Islamic fintech", "zakat", "fintech funding", "Series A fintech",
+        "fintech layoffs", "APAC fintech", "bank credit",
     ],
     "Start-up": [
         "startup funding", "venture capital", "Series A", "Series B", "unicorn",
         "valuation", "seed round", "acquisition", "IPO", "founder",
+        "robotics", "biotech", "deep tech", "female founder", "women founders",
+        "digital economy", "startup ecosystem", "Korea startup", "Vietnam startup",
     ],
     "Sustainable Finance": [
         "green bond", "ESG", "sustainability", "climate finance", "carbon",
         "net zero", "energy transition", "impact investing", "renewable energy", "climate policy",
         "green infrastructure", "sustainable capital", "climate bond", "transition finance",
+        "social bond", "social loan", "solar energy", "emissions", "net zero summit",
+        "REIT green", "bank sustainability milestone",
     ],
     "Marketing": [
         "branding", "advertising", "digital marketing", "campaign", "consumer",
         "product launch", "social media", "growth", "strategy", "market share",
+        "AI marketing", "marketing AI", "agency rebrand", "Instagram algorithm",
+        "marketing transformation", "luxury marketing", "news media",
     ],
     "Entertainment": [
         "Singapore concert", "Singapore festival", "Singapore arts", "Singapore theatre",
         "Singapore premiere", "Singapore exhibition", "local artist", "Singapore music",
         "concert", "festival", "movie", "streaming", "art exhibition",
         "theatre", "music", "K-pop", "anime", "gaming",
-        "Singapore events", "things to do", "weekend events",
+        "Singapore events", "things to do", "weekend events", "Time Out Singapore",
     ],
 }
 
@@ -384,14 +415,18 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Do NOT include routine non-Asia stories just because they are geopolitical."
     ),
     "Country Credit": (
-        "Focus on sovereign and quasi-sovereign credit for Asian and APAC countries: "
+        "Primary focus: sovereign and quasi-sovereign credit for Asian and APAC countries — "
         "Singapore, China, Japan, South Korea, India, Indonesia, Malaysia, Thailand, "
-        "Philippines, Vietnam, Hong Kong, Australia, New Zealand."
+        "Philippines, Vietnam, Hong Kong, Australia, New Zealand. "
+        "Also include major rating actions globally (Eastern Europe, Latin America, Middle East) "
+        "when published by Moody's, S&P, or Fitch — these are relevant regardless of region."
     ),
     "Alternative Lending": (
-        "Focus on alternative lending, P2P finance, and digital credit in Asia, APAC "
-        "and SEA — especially Singapore, Indonesia, Malaysia, Thailand, Philippines, "
-        "Vietnam and China."
+        "Cover alternative lending, private credit, and direct lending globally. "
+        "US and European private credit managers (Blackstone, Blue Owl, Ares, KKR) are key "
+        "market movers and should be included. Also cover Asia, APAC and SEA alternative "
+        "lending — Singapore, Indonesia, Malaysia, Thailand, Philippines, Vietnam and China — "
+        "especially trade finance, P2P and digital credit."
     ),
     "Fintech": (
         "Focus on fintech, digital banking, payments, crypto-regulation and wealthtech "
@@ -399,9 +434,11 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Thailand, the Philippines, Vietnam, China, Japan and South Korea."
     ),
     "Start-up": (
-        "Focus on startup ecosystem news in Asia, APAC and SEA — especially "
+        "Primary focus: startup ecosystem news in Asia, APAC and SEA — especially "
         "Singapore, Indonesia, Malaysia, Thailand, Vietnam, Philippines, India, "
-        "Hong Kong and China."
+        "Hong Kong, China and South Korea. "
+        "Also include notable global startup stories (Europe, US) for deep-tech verticals "
+        "like robotics, biotech, and AI where the deal size or innovation angle is significant."
     ),
     "Sustainable Finance": (
         "Coverage should be global — include significant sustainable finance, ESG, "
@@ -412,10 +449,12 @@ CATEGORY_GEO_FOCUS: dict[str, str] = {
         "Europe, or other regions."
     ),
     "Marketing": (
-        "Focus on marketing, advertising, branding, digital marketing and media campaigns "
-        "globally, with priority on Asia, APAC, SEA and Middle East — especially Singapore, "
-        "Malaysia, Indonesia, Thailand, Philippines, Hong Kong, Japan, South Korea, China, "
-        "and the Gulf/MENA region."
+        "Cover marketing, advertising, branding, digital marketing, AI in marketing, and "
+        "media industry news globally. Prioritise Asia and APAC — Singapore, Malaysia, "
+        "Indonesia, Thailand, Philippines, Hong Kong, Japan, South Korea, China — but "
+        "include global tech and AI marketing trends (platform algorithm changes, agency "
+        "transformations, industry data) regardless of geography, as these affect the "
+        "whole industry."
     ),
     "Entertainment": (
         "PRIMARY focus: Singapore entertainment — local events, concerts, festivals, "
