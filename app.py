@@ -579,26 +579,53 @@ def fetch_news_with_search(
     # Extra ranking instruction for high-impact market categories
     if category in HIGH_IMPACT_CATEGORIES:
         ranking_rule = (
-            "RANKING PRIORITY — do NOT pick random recent articles. "
-            "Select only the {n} most market-moving, widely-covered or trending stories: "
-            "stories with the highest reader interest, biggest price/policy impact, "
-            "or most citations across multiple outlets. "
-            "Prefer breaking news and stories that top financial news homepages right now."
-        ).format(n=n)
+            "SEARCH STRATEGY — follow these three steps in order:\n\n"
+            "STEP 1 — SCAN BREAKING NEWS FIRST.\n"
+            "Before anything else, run a broad search:\n"
+            '  "financial markets breaking news today {now_sgt_str}"\n'
+            "This tells you what major events (wars, sanctions, trade shocks, "
+            "central bank surprises, currency crises, market crashes) are "
+            "actively dominating headlines RIGHT NOW. Note what you find.\n\n"
+            "STEP 2 — RUN YOUR CATEGORY SEARCH.\n"
+            'Use the query: "{search_q}"\n\n'
+            "STEP 3 — RANK AND SELECT by this strict priority tier system:\n"
+            "  TIER 1 — Market-wide shocks (MUST appear if happening):\n"
+            "    Wars, military escalations, sanctions, emergency central bank actions,\n"
+            "    currency crises, major sovereign defaults, Strait-of-Hormuz/supply-chain\n"
+            "    disruptions, major tariff announcements. If a Tier-1 event is happening\n"
+            "    today, it MUST be in your results — it outranks everything else.\n"
+            "  TIER 2 — Macro market moves covered by 5+ major outlets:\n"
+            "    Index-level crashes or rallies, oil price spikes, mass risk-off/risk-on,\n"
+            "    Fed/ECB/major-CB decisions, MSCI rebalancing, major ETF flows.\n"
+            "  TIER 3 — Significant corporate or sovereign news:\n"
+            "    Major earnings beats/misses, large IPOs, CEO changes at blue-chip firms,\n"
+            "    sovereign rating actions, large M&A.\n"
+            "  TIER 4 — Routine news: smaller company updates, analyst calls, previews.\n\n"
+            "WITHIN EACH TIER — prefer the most recently published article.\n"
+            "A Tier-1 article from 1 hour ago ALWAYS beats a Tier-3 article from 35 hours ago.\n"
+            "Select only the {n} most important stories by this ranking."
+        ).format(n=n, now_sgt_str=now_sgt_str, search_q=search_q)
     else:
         ranking_rule = (
-            f"Select the {n} most significant and widely-reported stories within the scope above."
+            f"Select the {n} most significant and widely-reported stories within the scope above. "
+            f"Prefer the most recently published articles within the 36-hour window."
         )
+
+    # For non-high-impact categories the search query lives here;
+    # for HIGH_IMPACT it is embedded inside ranking_rule (Step 2).
+    query_line = (
+        ""
+        if category in HIGH_IMPACT_CATEGORIES
+        else f'\nSearch query to use: "{search_q}"{keyword_line}\n'
+    )
 
     prompt = f"""Current time: {now_sgt_str}
 
-Use the web_search tool to find the {n} most important news stories about **{category}**.
-
-Search query to use: "{search_q}"{keyword_line}
+You are a financial news editor. Find the {n} most important and currently relevant news stories about **{category}**.
 
 Geographic / editorial focus:
 {geo_focus}
-
+{query_line}
 {ranking_rule}
 
 {source_rule}{exclusion_rule}
