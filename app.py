@@ -1,6 +1,6 @@
 """
-36h News Explorer
-─────────────────
+Helicap — News Explorer
+───────────────────────
 Uses Claude with the built-in `web_search` tool (Anthropic API).
 
 Single-pass pipeline:
@@ -26,7 +26,7 @@ import streamlit as st
 #  Page config
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="📰 36h News Explorer",
+    page_title="📰 Helicap — News Explorer",
     page_icon="📰",
     layout="wide",
 )
@@ -45,8 +45,9 @@ st.markdown("""
         background: linear-gradient(135deg, #0a1628 0%, #0d2150 50%, #1a3a6e 100%);
         border-radius: 16px; padding: 2rem 2.5rem; margin-bottom: 2rem; text-align: center;
     }
-    .app-header h1 { color: #ffffff; font-size: 2.6rem; margin: 0; }
-    .app-header p  { color: #b8c9e8; font-size: 1.05rem; margin-top: .5rem; }
+    .app-header h1      { color: #ffffff; font-size: 2.6rem; margin: 0; }
+    .app-header p       { color: #b8c9e8; font-size: 1.05rem; margin-top: .5rem; }
+    .app-header .byline { color: #7a93c0; font-size: .82rem; margin-top: .35rem; letter-spacing: .04em; }
 
     /* ── Metric cards ── */
     .metric-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
@@ -974,14 +975,15 @@ Claude searches the live web for each category and simultaneously self-assesses 
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="app-header">
-    <h1>📰 36h News Explorer</h1>
+    <h1>📰 Helicap — News Explorer</h1>
     <p>
-        <span style="opacity:.8">Claude searches the web &amp; self-verifies each article</span>
+        <b>Stay informed. Stay ahead.</b>
         &nbsp;·&nbsp;
-        Asia · APAC · SEA focus
+        <span style="opacity:.85">AI-curated, source-verified news from across Asia and beyond</span>
         &nbsp;·&nbsp;
         Export to Excel
     </p>
+    <p class="byline">Designed &amp; Built by Laura Garzon</p>
 </div>
 """, unsafe_allow_html=True)
 
