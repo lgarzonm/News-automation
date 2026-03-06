@@ -546,8 +546,10 @@ def fetch_news_with_search(
     search_q = base_query
     if kw_list:
         keyword_line = (
-            f"\nKeyword filter — after searching, include only stories that relate to "
-            f"at least one of these topics: {', '.join(kw_list)}."
+            f"\nKeyword guidance — when selecting among equally relevant articles, "
+            f"prefer stories that relate to at least one of these topics: {', '.join(kw_list)}. "
+            f"Do NOT exclude a clearly relevant article just because it doesn't match a keyword — "
+            f"the keyword list is a ranking hint, not a hard filter."
         )
     else:
         keyword_line = ""
@@ -745,7 +747,8 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                tools=[{"type": "web_search_20250305", "name": "web_search",
+                        "max_uses": 4 if category in HIGH_IMPACT_CATEGORIES else 3}],
             )
             articles = _extract_json_array(raw)
 
