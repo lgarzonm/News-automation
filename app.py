@@ -745,7 +745,7 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             )
             articles = _extract_json_array(raw)
 
