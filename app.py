@@ -367,10 +367,8 @@ CATEGORY_DEFAULT_KEYWORDS: dict[str, list[str]] = {
         "credit infrastructure", "BDC", "trade finance",
     ],
     "Fintech": [
-        "fintech", "digital bank", "neobank", "e-wallet", "payments", "BNPL",
-        "digital lending", "open banking", "blockchain", "crypto", "financial inclusion",
-        "AI fintech", "fintech funding", "fintech IPO", "fintech investment",
-        "APAC fintech", "digital payment", "credit invisible", "wealthtech",
+        "fintech", "neobank", "digital payments", "embedded finance",
+        "financial inclusion", "wealthtech", "fintech funding", "AI payments",
     ],
     "Start-up": [
         "startup funding", "venture capital", "VC fund", "PE fund", "Series A", "Series B",
@@ -543,18 +541,15 @@ def fetch_news_with_search(
     geo_focus    = CATEGORY_GEO_FOCUS.get(category, "")
     kw_list      = keywords if keywords else []
 
-    # Build the search query: append each keyword as an OR alternative so Claude
-    # searches for ANY of them rather than expecting all to appear together.
+    # Keep the search query clean — appending a long OR chain breaks web search.
+    # Keywords are used only as a post-search inclusion filter in the prompt.
+    search_q = base_query
     if kw_list:
-        kw_or        = " OR ".join(f'"{k}"' for k in kw_list)
-        search_q     = f"{base_query} ({kw_or})"
         keyword_line = (
-            "\nKeyword rule — include a story if it mentions AT LEAST ONE of these "
-            f"keywords (not all of them): {', '.join(kw_list)}. "
-            "Run separate searches per keyword when needed to find matching articles."
+            f"\nKeyword filter — after searching, include only stories that relate to "
+            f"at least one of these topics: {', '.join(kw_list)}."
         )
     else:
-        search_q     = base_query
         keyword_line = ""
     source_rule = (
         f"ONLY include articles from these trusted sources: {trusted_str}."
@@ -750,7 +745,7 @@ def _run_claude_search(
             raw      = _run_claude_agentic_loop(
                 prompt, claude_api_key,
                 model=MODEL,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             )
             articles = _extract_json_array(raw)
 
